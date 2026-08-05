@@ -73,7 +73,7 @@
       "id": "F008",
       "priority": "P0",
       "name": "Relative date resolution",
-      "status": "todo",
+      "status": "done",
       "depends_on": [
         "F004"
       ]
