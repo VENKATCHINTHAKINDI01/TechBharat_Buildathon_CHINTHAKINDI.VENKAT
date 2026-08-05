@@ -87,7 +87,17 @@ def _clean_ask(text: str) -> str:
     return t.strip()
 
 
+def _display_date_phrase(date_phrase: str | None) -> str | None:
+    """Trim trailing postpositions ('ki', 'varaku') for human-readable
+    display in a composed raw_text -- resolve_date() strips these itself
+    when actually resolving the date, this is presentation-only."""
+    if not date_phrase:
+        return date_phrase
+    return re.sub(r"\s+(ki|varaku)$", "", date_phrase.strip(), flags=re.I)
+
+
 def _compose_raw_text(owner: str, ask_text: str, date_phrase: str | None) -> str:
+    date_phrase = _display_date_phrase(date_phrase)
     checklist_match = _CHECKLIST_CHESI_RE.search(ask_text)
     if checklist_match:
         obj = checklist_match.group(1).strip()
