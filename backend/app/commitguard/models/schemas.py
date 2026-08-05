@@ -40,6 +40,12 @@ class OwnerResolutionMethod(str, Enum):
     unresolved = "unresolved"
 
 
+class Priority(str, Enum):
+    low = "low"
+    medium = "medium"
+    high = "high"
+
+
 class DateResolutionMethod(str, Enum):
     absolute = "absolute"
     relative = "relative"
@@ -95,6 +101,7 @@ class CandidateItem(BaseModel):
     evidence_quotes: list[EvidenceQuote] = Field(default_factory=list)
     raw_owner_mention: Optional[str] = None
     raw_date_mention: Optional[str] = None
+    priority: Priority = Priority.medium
     confidence: float = Field(ge=0.0, le=1.0)
 
     @field_validator("evidence_quotes")

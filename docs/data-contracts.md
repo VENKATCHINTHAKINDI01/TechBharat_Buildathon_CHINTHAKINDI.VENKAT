@@ -27,7 +27,20 @@ change to a shape here must be a deliberate edit to this file.
 | `evidence_quotes` | list[EvidenceQuote] | must be non-empty for `action_item` |
 | `raw_owner_mention` | str \| null | as spoken, before resolution |
 | `raw_date_mention` | str \| null | as spoken, before resolution |
+| `priority` | enum: `low`, `medium`, `high`, default `medium` | required by the TechBharat brief ("owner, a due date, a priority and a confidence score"); added F004b |
 | `confidence` | float [0,1] | model-reported confidence |
+
+### F004b — priority field (brief-compliance patch)
+
+The TechBharat Cohort #2 buildathon brief (Use Case B, "Must-have
+requirements") explicitly requires action items to carry a priority
+alongside owner/date/confidence. This field was missing from the original
+F004 schema and was added retroactively across F004/F005/F006/F007 in a
+single documented patch once the brief was available -- see `progress.md`
+for the session that introduced it. `agents/reference_pipeline.py` derives
+it deterministically: `risk`/`blocker` kind -> `high`; `disputed`
+decisions -> `high`; `open_question` -> `low`; everything else -> `medium`.
+This is a heuristic, not a scored classifier -- revisit under F016.
 
 ### EvidenceQuote
 

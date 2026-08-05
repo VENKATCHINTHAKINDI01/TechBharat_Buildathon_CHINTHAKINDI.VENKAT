@@ -99,12 +99,33 @@
       ]
     },
     {
+      "id": "F004b",
+      "priority": "P0",
+      "name": "Action item priority field (TechBharat brief compliance patch)",
+      "status": "done",
+      "depends_on": [
+        "F004"
+      ]
+    },
+    {
       "id": "F011",
       "priority": "P0",
       "name": "Persistence and audit event store",
       "status": "todo",
       "depends_on": [
         "F004"
+      ]
+    },
+    {
+      "id": "F011b",
+      "priority": "P0",
+      "name": "Structured meeting record synthesis (executive summary, decisions, open questions, risks/blockers, action items)",
+      "status": "todo",
+      "depends_on": [
+        "F004b",
+        "F006",
+        "F007",
+        "F008"
       ]
     },
     {

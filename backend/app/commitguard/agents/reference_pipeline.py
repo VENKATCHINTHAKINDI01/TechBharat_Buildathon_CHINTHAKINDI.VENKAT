@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import re
 
-from app.commitguard.models.schemas import CandidateKind, Classification, EvidenceQuote, TranscriptSegment, ValidatedItem
+from app.commitguard.models.schemas import CandidateKind, Classification, EvidenceQuote, Priority, TranscriptSegment, ValidatedItem
 
 REQUEST_LINE_RE = re.compile(r"^([A-Za-z][A-Za-z ]{0,30}),\s*(.+)$")
 REQUEST_MARKERS = ("can you", "could you", "will you", "chesthava")
@@ -65,6 +65,20 @@ DATE_PHRASE_RE = re.compile(
 # hand-written special case, not general machine translation -- documented
 # here rather than hidden, per the non-general-NLU scope of this module.
 _CHECKLIST_CHESI_RE = re.compile(r"(.+?)\s+chesi\s+.+?\s+share\s+chesthava", re.I)
+
+
+def _derive_priority(kind: CandidateKind, classification: str) -> Priority:
+    """Deterministic priority heuristic (F004b, TechBharat brief
+    compliance patch -- see docs/data-contracts.md#f004b). Not a scored
+    classifier; revisit under F016 if the LLM-backed pipeline replaces
+    this reference implementation."""
+    if kind in (CandidateKind.risk, CandidateKind.blocker):
+        return Priority.high
+    if kind == CandidateKind.decision and classification == "disputed":
+        return Priority.high
+    if kind == CandidateKind.open_question:
+        return Priority.low
+    return Priority.medium
 
 
 def _quote(seg: TranscriptSegment) -> EvidenceQuote:
@@ -197,6 +211,7 @@ def _resolve_request_thread(
         evidence_quotes=evidence,
         raw_owner_mention=owner,
         raw_date_mention=raw_date,
+        priority=_derive_priority(CandidateKind.action_item, classification),
         confidence=0.9 if classification == "confirmed" else 0.55,
         classification=Classification(classification),
         contradiction_note=contradiction_note,
@@ -213,6 +228,7 @@ def _build_suggestion(seg: TranscriptSegment, meeting_id: str, counter: int) -> 
         evidence_quotes=[_quote(seg)],
         raw_owner_mention=None,
         raw_date_mention=_find_date_phrase(seg.text),
+        priority=_derive_priority(CandidateKind.action_item, "suggestion"),
         confidence=0.3,
         classification=Classification.suggestion,
     )
@@ -246,6 +262,7 @@ def _check_disagreement(segments: list[TranscriptSegment], idx: int, meeting_id:
         evidence_quotes=evidence,
         raw_owner_mention=None,
         raw_date_mention=None,
+        priority=_derive_priority(CandidateKind.decision, classification),
         confidence=0.5 if classification == "disputed" else 0.8,
         classification=Classification(classification),
         contradiction_note=note,
