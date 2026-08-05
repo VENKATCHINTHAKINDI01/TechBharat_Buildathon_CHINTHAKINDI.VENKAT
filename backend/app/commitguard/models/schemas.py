@@ -162,6 +162,21 @@ class AuditEvent(BaseModel):
     created_at: datetime
 
 
+class MeetingRecord(BaseModel):
+    """F011b: aggregates a meeting's ResolvedItems into the structured
+    record the TechBharat brief requires (executive summary + decisions +
+    open questions + risks/blockers + action items). See
+    docs/data-contracts.md for the partition invariant this must satisfy."""
+
+    meeting_id: str
+    executive_summary: str
+    decisions: list[ResolvedItem] = Field(default_factory=list)
+    open_questions: list[ResolvedItem] = Field(default_factory=list)
+    risks_blockers: list[ResolvedItem] = Field(default_factory=list)
+    action_items: list[ResolvedItem] = Field(default_factory=list)
+    generated_at: datetime
+
+
 class GitHubIssueRecord(BaseModel):
     dedupe_key: str
     candidate_id: str

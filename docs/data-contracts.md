@@ -66,6 +66,28 @@ This is a heuristic, not a scored classifier -- revisit under F016.
 | `due_date` | date (ISO 8601) \| null | null if unresolved |
 | `date_resolution_method` | enum: `absolute`, `relative`, `unresolved` | |
 
+## MeetingRecord (produced by F011b, aggregates ResolvedItem)
+
+TechBharat brief, Use Case B, "Must-have requirements": "Produce a
+structured meeting record containing: an executive summary, the decisions
+made, open questions, risks or blockers raised, and the action items."
+This was missing from the original schema set (F004) -- candidates existed
+per-kind but nothing aggregated them into one record. Added as F011b.
+
+| field | type | notes |
+|---|---|---|
+| `meeting_id` | str | |
+| `executive_summary` | str | deterministic templated summary in the current reference implementation (see architecture.md); LLM-backed generation is the target |
+| `decisions` | list[ResolvedItem] | items with `kind == decision` |
+| `open_questions` | list[ResolvedItem] | items with `kind == open_question` |
+| `risks_blockers` | list[ResolvedItem] | items with `kind in (risk, blocker)` |
+| `action_items` | list[ResolvedItem] | items with `kind == action_item` |
+| `generated_at` | datetime | |
+
+`decisions`/`open_questions`/`risks_blockers`/`action_items` together must
+contain every item passed in exactly once (a partition by `kind`, not a
+filter that can silently drop items) -- enforced by test.
+
 ## GateDecision (produced by F010)
 
 | field | type | notes |

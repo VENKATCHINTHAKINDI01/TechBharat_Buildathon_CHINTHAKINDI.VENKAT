@@ -120,7 +120,7 @@
       "id": "F011b",
       "priority": "P0",
       "name": "Structured meeting record synthesis (executive summary, decisions, open questions, risks/blockers, action items)",
-      "status": "todo",
+      "status": "done",
       "depends_on": [
         "F004b",
         "F006",
