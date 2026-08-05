@@ -36,7 +36,7 @@
       "id": "F004",
       "priority": "P0",
       "name": "Pydantic schemas and JSON validation",
-      "status": "todo",
+      "status": "done",
       "depends_on": [
         "F001"
       ]
