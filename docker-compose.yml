@@ -1,15 +1,35 @@
-version: "3.9"
-
 services:
   mongo:
     image: mongo:7
-    container_name: nexvi_mongo
+    container_name: commitguard_mongo
+    restart: unless-stopped
     ports:
       - "27017:27017"
     volumes:
       - mongo_data:/data/db
     environment:
-      MONGO_INITDB_DATABASE: nexvi_meets
+      MONGO_INITDB_DATABASE: commitguard
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: commitguard_backend
+    profiles: ["full"]        # default `docker compose up -d` starts mongo only
+    depends_on:
+      mongo:
+        condition: service_healthy
+    env_file:
+      - ./backend/.env
+    environment:
+      MONGO_URI: mongodb://mongo:27017
+    ports:
+      - "8000:8000"
 
 volumes:
   mongo_data:

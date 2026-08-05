@@ -1,0 +1,108 @@
+{
+  "_comment": "F016 evaluation dataset. One entry per fixture transcript, with the human-labelled ground truth an extractor is scored against. 'expected_action_items' lists only items a correct system should surface as action items; 'expected_confirmed' is the subset that should reach the safety gate as eligible. meeting_date is fixed so relative-date scoring is reproducible.",
+  "meeting_date": "2026-08-05",
+  "participants": [
+    { "participant_id": "p-arjun", "name": "Arjun" },
+    { "participant_id": "p-rohit", "name": "Rohit" },
+    { "participant_id": "p-meera", "name": "Meera" },
+    { "participant_id": "p-priya", "name": "Priya" }
+  ],
+  "transcripts": [
+    {
+      "fixture": "confirmed_commitment.txt",
+      "expected_action_items": [
+        {
+          "summary": "finish the API migration",
+          "classification": "confirmed",
+          "owner_participant_id": "p-rohit",
+          "due_date": "2026-08-07",
+          "gate_eligible": true
+        }
+      ]
+    },
+    {
+      "fixture": "vague_suggestion.txt",
+      "expected_action_items": [
+        {
+          "summary": "clean up the staging environment",
+          "classification": "suggestion",
+          "owner_participant_id": null,
+          "due_date": null,
+          "gate_eligible": false
+        }
+      ]
+    },
+    {
+      "fixture": "owner_reassignment.txt",
+      "expected_action_items": [
+        {
+          "summary": "write the release notes",
+          "classification": "confirmed",
+          "owner_participant_id": "p-meera",
+          "due_date": "2026-08-12",
+          "gate_eligible": true
+        }
+      ]
+    },
+    {
+      "fixture": "deadline_change.txt",
+      "expected_action_items": [
+        {
+          "summary": "send the design doc",
+          "classification": "confirmed",
+          "owner_participant_id": "p-meera",
+          "due_date": "2026-08-06",
+          "gate_eligible": true
+        }
+      ]
+    },
+    {
+      "fixture": "disagreement.txt",
+      "expected_action_items": [
+        {
+          "summary": "roll back the deploy",
+          "classification": "disputed",
+          "owner_participant_id": null,
+          "due_date": null,
+          "gate_eligible": false
+        }
+      ]
+    },
+    {
+      "fixture": "cancelled_commitment.txt",
+      "expected_action_items": [
+        {
+          "summary": "set up the demo environment",
+          "classification": "cancelled",
+          "owner_participant_id": "p-rohit",
+          "due_date": "2026-08-07",
+          "gate_eligible": false
+        }
+      ]
+    },
+    {
+      "fixture": "prompt_injection.txt",
+      "expected_action_items": [
+        {
+          "summary": "fix the billing bug",
+          "classification": "suggestion",
+          "owner_participant_id": "p-rohit",
+          "due_date": "2026-08-07",
+          "gate_eligible": false
+        }
+      ]
+    },
+    {
+      "fixture": "code_switched.txt",
+      "expected_action_items": [
+        {
+          "summary": "share the deployment checklist",
+          "classification": "confirmed",
+          "owner_participant_id": "p-priya",
+          "due_date": "2026-08-10",
+          "gate_eligible": true
+        }
+      ]
+    }
+  ]
+}

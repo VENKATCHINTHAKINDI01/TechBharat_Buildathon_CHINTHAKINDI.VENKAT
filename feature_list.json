@@ -111,7 +111,7 @@
       "id": "F011",
       "priority": "P0",
       "name": "Persistence and audit event store",
-      "status": "todo",
+      "status": "done",
       "depends_on": [
         "F004"
       ]
@@ -132,7 +132,7 @@
       "id": "F012",
       "priority": "P0",
       "name": "Human review API",
-      "status": "todo",
+      "status": "done",
       "depends_on": [
         "F010",
         "F011"
@@ -142,7 +142,7 @@
       "id": "F013",
       "priority": "P0",
       "name": "Review frontend with evidence drawer",
-      "status": "todo",
+      "status": "done",
       "depends_on": [
         "F012"
       ]
@@ -151,7 +151,7 @@
       "id": "F014",
       "priority": "P0",
       "name": "GitHub Issues tool behind interface",
-      "status": "todo",
+      "status": "done",
       "depends_on": [
         "F012"
       ]
@@ -160,7 +160,7 @@
       "id": "F015",
       "priority": "P0",
       "name": "Idempotency and duplicate suppression",
-      "status": "todo",
+      "status": "done",
       "depends_on": [
         "F011",
         "F014"
@@ -170,7 +170,7 @@
       "id": "F016",
       "priority": "P0",
       "name": "Evaluation dataset and scorer",
-      "status": "todo",
+      "status": "done",
       "depends_on": [
         "F005",
         "F006",
@@ -182,7 +182,7 @@
       "id": "F017",
       "priority": "P1",
       "name": "Code-switched fixture",
-      "status": "todo",
+      "status": "done",
       "depends_on": [
         "F016"
       ]
@@ -191,7 +191,7 @@
       "id": "F018",
       "priority": "P0",
       "name": "End-to-end demo test",
-      "status": "todo",
+      "status": "done",
       "depends_on": [
         "F013",
         "F014",

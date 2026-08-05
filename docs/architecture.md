@@ -1,106 +1,115 @@
 # CommitGuard — Architecture
 
-## Placement in the existing repository
+## Shape
 
-CommitGuard is built **inside** the existing Nexvi.Meets `backend/` and
-`frontend/` trees, under its own namespace, so it can reuse shared
-infrastructure without coupling to or silently modifying the existing
-meeting-summarization product.
+Layered (ports-and-adapters). Dependencies point **inward only**:
+`api → services → domain`, with `adapters` plugged in from the outside.
 
 ```
-backend/
-  app/
-    commitguard/
-      __init__.py
-      routes.py            # FastAPI router, mounted at /commitguard
-      models/               # Pydantic schemas (F004)
-      ingestion/            # txt/vtt/srt parsing + normalization (F002, F003)
-      agents/                # extraction + validation LLM passes (F005, F006)
-      resolvers/             # owner resolution, date resolution (F007, F008)
-      safety/                 # deterministic safety gate (F010)
-      tools/                  # github_issues_tool.py etc. (F014)
-      audit/                  # event store (F011)
-      eval/                    # evaluation dataset + scorer (F016)
-    main.py                  # existing app; will mount commitguard router
-frontend/
-  src/
-    commitguard/
-      ReviewScreen.jsx        # human review UI (F013)
-      EvidenceDrawer.jsx
-      api.js
+backend/app/
+  core/                     configuration
+    config.py               one Settings; require_* helpers fail loudly
+
+  domain/                   PURE. no network, no database, no LLM.
+    models.py               every schema in docs/data-contracts.md
+    safety/gate.py          the six deterministic rules
+
+  services/                 orchestration and business logic
+    ingestion/
+      parser.py             txt / vtt / srt  (F002)
+      normalization.py      -> TranscriptSegment (F003)
+    extraction/
+      base.py               Extractor protocol + drop_unsupported_evidence
+      groq.py               LLM extractor (primary)      (F005/F006)
+      reference.py          deterministic extractor (fallback + test baseline)
+    resolvers/
+      owner.py              exact/fuzzy/unresolved       (F007)
+      date.py               relative -> absolute          (F008)
+      combine.py            ValidatedItem -> ResolvedItem
+    meeting_record.py       structured record synthesis   (F011b)
+    idempotency.py          dedupe key                    (F015)
+    audit.py                append-only audit writer      (F011)
+    payload.py              the exact IssuePayload
+    approval.py             THE chokepoint for side effects
+    pipeline.py             end-to-end orchestration
+    evaluation.py           scorer against labelled data  (F016)
+
+  adapters/                 the I/O boundary
+    repositories/           base.py | mongo.py (runtime) | memory.py (tests)
+    trackers/               base.py | github.py (runtime) | memory.py (tests)
+
+  api/
+    deps.py                 dependency wiring (overridable in tests only)
+    schemas.py              request/response DTOs, separate from domain models
+    routes/                 health.py | meetings.py | review.py
 ```
 
-Shared, reused as-is: `app/config.py` (Settings), `app/db/mongo.py` (Mongo
-connection), the base FastAPI app in `app/main.py` (CommitGuard's router is
-mounted onto it, not a separate app). CommitGuard uses its own Mongo
-collections (prefixed `commitguard_*`) and its own Pydantic schemas — it
-must not reuse or mutate Nexvi.Meets' `Meeting` / `ActionItem` models.
-
-## Pipeline (high level)
-
-```
-transcript file
-   -> ingestion (F002)              deterministic parsing
-   -> normalization (F003)          deterministic, speaker segments
-   -> extraction (F005)             LLM: propose candidates + evidence quotes
-   -> commitment validation (F006)  LLM: classify + detect contradictions
-   -> owner resolution (F007)       deterministic, against participant directory
-   -> date resolution (F008)        deterministic, against meeting date
-   -> safety gate (F010)            deterministic, computes eligibility
-   -> persistence + audit (F011)    every stage writes an audit event
-   -> human review API (F012)       reviewer sees all candidates + evidence
-   -> [human approval]              required before any external call
-   -> GitHub Issues tool (F014)     only path that calls GitHub; gated by F010 + approval
-   -> idempotency check (F015)      dedupe before create
-```
-
-## F005/F006 implementation note (interim deterministic reference pipeline)
-
-`agents/reference_pipeline.py` implements `extract_and_validate(segments,
-meeting_id) -> list[ValidatedItem]`, combining F005 (extraction) and F006
-(commitment validation) behind one interface. It is currently a
-pattern/keyword-based deterministic implementation, not an LLM call: it has
-no network dependency, no API key requirement, and is fully reproducible in
-CI. This was a deliberate scoping choice to unblock F007-F010 (owner
-resolution, date resolution, the safety gate) without first standing up and
-evaluating a Groq-backed extraction prompt against `F016`'s eval harness.
-
-An LLM-backed implementation is still the target (per `docs/product.md`)
-and can replace this module's body without changing any downstream caller,
-since F007-F010 only consume `ValidatedItem`/`ResolvedItem` objects, never
-this module's internals. When that swap happens, `F016`'s evaluation
-harness must show the LLM implementation is at least as accurate as this
-reference implementation on the fixture set before it replaces it as the
-default.
-
-Known scope limits of the current reference implementation (see
-`progress.md` for the session that introduced it): it recognizes a fixed,
-small set of English request/affirm/negative/cancel/correction phrases plus
-a documented, controlled Telugu lexicon (`chesthava`, `chesthanu`,
-`పంపిస్తాను`, postpositions `ki`/`varaku`) for the one code-switched pair
-the product brief asks for. It is not general sentiment or intent
-classification and will misclassify phrasing outside its fixture set.
+`frontend/src/` is the React review UI (`api/client.js`, `components/`).
+`legacy/` holds the archived pre-CommitGuard tree — see `legacy/README.md`.
 
 ## The non-negotiable boundary
 
-Per `AGENTS.md`: the LLM (extraction, validation) may produce interpretation
-and classification, but a separate, deterministic module (`safety/gate.py`)
-is the only code allowed to decide whether a candidate is eligible for
-GitHub creation, and the GitHub tool (`tools/github_issues_tool.py`) is the
-only code allowed to call the GitHub API. The LLM never calls tools/GitHub
-directly and never bypasses the gate. This boundary is enforced by module
-structure (LLM-calling code and side-effecting code do not import each
-other) and will be covered by the F010/F014 tests.
+Per `AGENTS.md`: the LLM may interpret the meeting; deterministic code
+decides whether an external action is allowed. Three structural properties
+enforce that, each covered by a test rather than a comment:
 
-## Data stores
+**1. The gate cannot read prose.** `check_gate(item: ResolvedItem,
+confidence_threshold: float) -> GateDecision` has no parameter through
+which transcript text or a model response could reach it. Asserted by
+`test_gate_signature_cannot_receive_raw_transcript_text`.
 
-- MongoDB (existing `nexvi_meets` database, `commitguard_*` collections):
-  candidates, resolved items, audit events, review decisions.
-- No Chroma dependency for CommitGuard P0/P1 (cross-meeting memory is P2 and
-  out of scope for now).
+**2. The extractor cannot cause a side effect.** An `Extractor` returns
+`list[ValidatedItem]` and nothing else. `services/extraction/` does not
+import `adapters/trackers/`, and has no repository handle. The only caller
+of a tracker is `services/approval.py`.
 
-## Changes to this document
+**3. An extractor cannot grade its own citations.**
+`drop_unsupported_evidence` runs *outside* the extractor and deletes any
+evidence quote that is not a literal substring of the segment it names. An
+`action_item` left with no surviving evidence is dropped entirely.
 
-Any change to this pipeline, the module boundary, or the repo placement
-decision must update this file in the same commit, per `AGENTS.md` scope
-rules.
+Everything an approval must satisfy converges in one function,
+`approval.approve_and_create_issue`: re-run the gate server-side (never
+trust the client's last render), require an explicit `ReviewDecision`,
+check the dedupe key *before* the network call, and write an audit event on
+every branch — including refusals and failures.
+
+## Extraction: two implementations, one protocol
+
+| | `groq.py` | `reference.py` |
+|---|---|---|
+| Role | primary when `GROQ_API_KEY` is set | fallback; the only extractor tests use |
+| Determinism | no | yes |
+| Network | yes | no |
+| Failure | raises `ExtractionError` → falls back | n/a |
+
+Both return `list[ValidatedItem]`, so resolution, the gate, review and the
+tracker are byte-identical regardless of which produced the candidates.
+A provider outage degrades output *quality*; it never loses the meeting and
+never changes what is allowed to happen.
+
+The reference implementation is pattern-based over a small fixture set, not
+general NLU. It recognizes a fixed set of English request/affirm/decline/
+cancel phrases plus a documented Telugu lexicon (`chesthava`, `chesthanu`,
+`పంపిస్తాను`, postpositions `ki` / `varaku`) for the one code-switched pair
+the brief asks for. It will misclassify phrasing outside that set — which
+is exactly why Groq is primary.
+
+## Failure posture
+
+Everything fails *closed*. Unresolvable owner → `unresolved`, never a
+guess. Unparseable date → `null`, never today's date. Unknown
+classification from the model → coerced to `suggestion`, which can never
+pass the gate. Missing credentials → a loud error, never a silent
+in-memory substitute. A tracker error → HTTP 502 plus an audit event,
+never a success response.
+
+The in-memory repository and tracker exist only for tests, injected through
+`app.dependency_overrides`. `api/deps.py` constructs only the real
+implementations, so no configuration mistake can make a live demo record
+issues to nowhere and report success.
+
+## Changing this document
+
+Any change to the layering, the boundary, or the extraction contract must
+update this file in the same commit (`AGENTS.md` scope rules).
