@@ -1,0 +1,191 @@
+{
+  "project": "CommitGuard",
+  "rules": {
+    "one_feature_at_a_time": true,
+    "tests_required": true,
+    "verification_required": true,
+    "human_approval_required": true
+  },
+  "features": [
+    {
+      "id": "F001",
+      "priority": "P0",
+      "name": "Repository scaffold and health checks",
+      "status": "todo",
+      "depends_on": []
+    },
+    {
+      "id": "F002",
+      "priority": "P0",
+      "name": "Transcript ingestion for txt vtt srt",
+      "status": "todo",
+      "depends_on": [
+        "F001"
+      ]
+    },
+    {
+      "id": "F003",
+      "priority": "P0",
+      "name": "Transcript normalization into speaker segments",
+      "status": "todo",
+      "depends_on": [
+        "F002"
+      ]
+    },
+    {
+      "id": "F004",
+      "priority": "P0",
+      "name": "Pydantic schemas and JSON validation",
+      "status": "todo",
+      "depends_on": [
+        "F001"
+      ]
+    },
+    {
+      "id": "F005",
+      "priority": "P0",
+      "name": "Candidate extraction pass",
+      "status": "todo",
+      "depends_on": [
+        "F003",
+        "F004"
+      ]
+    },
+    {
+      "id": "F006",
+      "priority": "P0",
+      "name": "Commitment validation pass",
+      "status": "todo",
+      "depends_on": [
+        "F005"
+      ]
+    },
+    {
+      "id": "F007",
+      "priority": "P0",
+      "name": "Participant directory and owner resolution",
+      "status": "todo",
+      "depends_on": [
+        "F004"
+      ]
+    },
+    {
+      "id": "F008",
+      "priority": "P0",
+      "name": "Relative date resolution",
+      "status": "todo",
+      "depends_on": [
+        "F004"
+      ]
+    },
+    {
+      "id": "F009",
+      "priority": "P1",
+      "name": "Disagreement cancellation and correction detection",
+      "status": "todo",
+      "depends_on": [
+        "F006"
+      ]
+    },
+    {
+      "id": "F010",
+      "priority": "P0",
+      "name": "Deterministic safety gate",
+      "status": "todo",
+      "depends_on": [
+        "F006",
+        "F007",
+        "F008"
+      ]
+    },
+    {
+      "id": "F011",
+      "priority": "P0",
+      "name": "Persistence and audit event store",
+      "status": "todo",
+      "depends_on": [
+        "F004"
+      ]
+    },
+    {
+      "id": "F012",
+      "priority": "P0",
+      "name": "Human review API",
+      "status": "todo",
+      "depends_on": [
+        "F010",
+        "F011"
+      ]
+    },
+    {
+      "id": "F013",
+      "priority": "P0",
+      "name": "Review frontend with evidence drawer",
+      "status": "todo",
+      "depends_on": [
+        "F012"
+      ]
+    },
+    {
+      "id": "F014",
+      "priority": "P0",
+      "name": "GitHub Issues tool behind interface",
+      "status": "todo",
+      "depends_on": [
+        "F012"
+      ]
+    },
+    {
+      "id": "F015",
+      "priority": "P0",
+      "name": "Idempotency and duplicate suppression",
+      "status": "todo",
+      "depends_on": [
+        "F011",
+        "F014"
+      ]
+    },
+    {
+      "id": "F016",
+      "priority": "P0",
+      "name": "Evaluation dataset and scorer",
+      "status": "todo",
+      "depends_on": [
+        "F005",
+        "F006",
+        "F007",
+        "F008"
+      ]
+    },
+    {
+      "id": "F017",
+      "priority": "P1",
+      "name": "Code-switched fixture",
+      "status": "todo",
+      "depends_on": [
+        "F016"
+      ]
+    },
+    {
+      "id": "F018",
+      "priority": "P0",
+      "name": "End-to-end demo test",
+      "status": "todo",
+      "depends_on": [
+        "F013",
+        "F014",
+        "F015",
+        "F016"
+      ]
+    },
+    {
+      "id": "F019",
+      "priority": "P0",
+      "name": "Evaluation report and demo freeze",
+      "status": "todo",
+      "depends_on": [
+        "F018"
+      ]
+    }
+  ]
+}
