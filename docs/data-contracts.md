@@ -127,11 +127,17 @@ Eligibility requires ALL of: `classification == confirmed`,
 
 | field | type | notes |
 |---|---|---|
-| `dedupe_key` | str | deterministic hash of `(meeting_id, owner_participant_id, normalized_text)` |
+| `dedupe_key` | str | SHA-256 of `(meeting_id, owner_participant_id, normalized_text)`; unique index in Mongo |
 | `candidate_id` | str | |
+| `meeting_id` | str | so issue records are retrievable per meeting for the review screen |
 | `github_issue_number` | int | |
 | `github_issue_url` | str | |
 | `created_at` | datetime | |
+
+The dedupe key is computed from the **resolved owner participant id**,
+not the raw spoken name, so "Rohit" / "rohit" / "Rohit Sharma" cannot
+produce three issues for one commitment. Normalization (lowercase, strip
+punctuation, collapse whitespace) lives in `app/services/idempotency.py`.
 
 ## Change control
 

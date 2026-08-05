@@ -180,6 +180,7 @@ class MeetingRecord(BaseModel):
 class GitHubIssueRecord(BaseModel):
     dedupe_key: str
     candidate_id: str
+    meeting_id: str
     github_issue_number: int
     github_issue_url: str
     created_at: datetime

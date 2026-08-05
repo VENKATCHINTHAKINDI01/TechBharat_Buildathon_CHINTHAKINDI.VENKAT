@@ -129,6 +129,7 @@ def test_github_issue_record_round_trip():
     rec = GitHubIssueRecord(
         dedupe_key="abc123",
         candidate_id="c1",
+        meeting_id="m1",
         github_issue_number=42,
         github_issue_url="https://github.com/org/repo/issues/42",
         created_at=datetime(2026, 8, 5, 12, 0, 0),
