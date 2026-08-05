@@ -11,7 +11,7 @@
       "id": "F001",
       "priority": "P0",
       "name": "Repository scaffold and health checks",
-      "status": "todo",
+      "status": "done",
       "depends_on": []
     },
     {

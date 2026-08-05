@@ -10,6 +10,7 @@ from app.roster.attendee_roster import build_roster
 
 # Routers
 from app.review.routes import router as review_router
+from app.commitguard.routes import router as commitguard_router
 
 app = FastAPI(title="NexVi.Meets", version="0.1.0")
 
@@ -22,6 +23,7 @@ app.add_middleware(
 )
 
 app.include_router(review_router, prefix="/review", tags=["review"])
+app.include_router(commitguard_router, prefix="/commitguard", tags=["commitguard"])
 
 
 # ---------------------------------------------------------------------------
