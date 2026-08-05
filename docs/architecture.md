@@ -54,6 +54,33 @@ transcript file
    -> idempotency check (F015)      dedupe before create
 ```
 
+## F005/F006 implementation note (interim deterministic reference pipeline)
+
+`agents/reference_pipeline.py` implements `extract_and_validate(segments,
+meeting_id) -> list[ValidatedItem]`, combining F005 (extraction) and F006
+(commitment validation) behind one interface. It is currently a
+pattern/keyword-based deterministic implementation, not an LLM call: it has
+no network dependency, no API key requirement, and is fully reproducible in
+CI. This was a deliberate scoping choice to unblock F007-F010 (owner
+resolution, date resolution, the safety gate) without first standing up and
+evaluating a Groq-backed extraction prompt against `F016`'s eval harness.
+
+An LLM-backed implementation is still the target (per `docs/product.md`)
+and can replace this module's body without changing any downstream caller,
+since F007-F010 only consume `ValidatedItem`/`ResolvedItem` objects, never
+this module's internals. When that swap happens, `F016`'s evaluation
+harness must show the LLM implementation is at least as accurate as this
+reference implementation on the fixture set before it replaces it as the
+default.
+
+Known scope limits of the current reference implementation (see
+`progress.md` for the session that introduced it): it recognizes a fixed,
+small set of English request/affirm/negative/cancel/correction phrases plus
+a documented, controlled Telugu lexicon (`chesthava`, `chesthanu`,
+`పంపిస్తాను`, postpositions `ki`/`varaku`) for the one code-switched pair
+the product brief asks for. It is not general sentiment or intent
+classification and will misclassify phrasing outside its fixture set.
+
 ## The non-negotiable boundary
 
 Per `AGENTS.md`: the LLM (extraction, validation) may produce interpretation

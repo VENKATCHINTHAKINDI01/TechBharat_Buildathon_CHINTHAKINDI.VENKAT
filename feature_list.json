@@ -45,7 +45,7 @@
       "id": "F005",
       "priority": "P0",
       "name": "Candidate extraction pass",
-      "status": "todo",
+      "status": "done",
       "depends_on": [
         "F003",
         "F004"
@@ -55,7 +55,7 @@
       "id": "F006",
       "priority": "P0",
       "name": "Commitment validation pass",
-      "status": "todo",
+      "status": "done",
       "depends_on": [
         "F005"
       ]
@@ -82,7 +82,7 @@
       "id": "F009",
       "priority": "P1",
       "name": "Disagreement cancellation and correction detection",
-      "status": "todo",
+      "status": "done",
       "depends_on": [
         "F006"
       ]
