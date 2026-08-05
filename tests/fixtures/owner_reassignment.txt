@@ -1,0 +1,4 @@
+# fixture: owner_reassignment
+Arjun: Rohit, can you write the release notes by Wednesday?
+Rohit: Actually I'm swamped, Meera can you take the release notes instead?
+Meera: Sure, I will write the release notes by Wednesday.

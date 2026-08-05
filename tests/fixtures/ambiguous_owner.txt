@@ -1,0 +1,6 @@
+# fixture: ambiguous_owner
+# The participant directory for this fixture deliberately contains two
+# participants who both go by "Priya" (see test_owner_resolution.py), so
+# resolution must fail closed instead of guessing which one.
+Arjun: Priya, can you review the PR by tomorrow?
+Priya: Yes, I will review the PR by tomorrow.

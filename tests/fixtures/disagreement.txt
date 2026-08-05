@@ -1,0 +1,3 @@
+# fixture: disagreement
+Arjun: I think we should roll back the deploy tonight.
+Rohit: I don't agree, the deploy is stable, we should not roll back.

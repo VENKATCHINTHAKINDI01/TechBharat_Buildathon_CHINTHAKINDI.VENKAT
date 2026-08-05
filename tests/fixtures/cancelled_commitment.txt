@@ -1,0 +1,4 @@
+# fixture: cancelled_commitment
+Arjun: Rohit, can you set up the demo environment by Friday?
+Rohit: Yes, I will set up the demo environment by Friday.
+Arjun: Actually never mind, the demo got cancelled, no need for that anymore.

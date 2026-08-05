@@ -18,7 +18,7 @@
       "id": "F002",
       "priority": "P0",
       "name": "Transcript ingestion for txt vtt srt",
-      "status": "todo",
+      "status": "done",
       "depends_on": [
         "F001"
       ]
@@ -27,7 +27,7 @@
       "id": "F003",
       "priority": "P0",
       "name": "Transcript normalization into speaker segments",
-      "status": "todo",
+      "status": "done",
       "depends_on": [
         "F002"
       ]

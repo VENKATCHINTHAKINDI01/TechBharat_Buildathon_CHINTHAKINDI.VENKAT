@@ -1,0 +1,3 @@
+# fixture: code_switched (English + Telugu)
+Arjun: Priya, deployment checklist complete chesi Monday varaku share chesthava?
+Priya: Yes, Monday morning ki పంపిస్తాను.
