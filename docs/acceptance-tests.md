@@ -35,6 +35,14 @@ for backend, a scripted check for repo-level features) and is the bar
 - Invalid examples (missing required field, wrong enum value) raise
   `ValidationError`.
 
+## F004b — Action item priority field (TechBharat brief compliance patch)
+
+- `CandidateItem` (and its subclasses) has a `priority` field
+  (`low`/`medium`/`high`), defaulting to `medium`, that round-trips.
+- The reference extraction pipeline derives it deterministically:
+  `risk`/`blocker` kind → `high`; `disputed` decision → `high`;
+  `open_question` → `low`; else `medium`.
+
 ## F005 — Candidate extraction pass
 
 - Given a fixture transcript, extraction produces `CandidateItem`s whose
@@ -61,9 +69,24 @@ for backend, a scripted check for repo-level features) and is the bar
 
 ## F009 — Disagreement/cancellation/correction detection (P1)
 
-- A transcript where item B cancels item A sets
-  `contradiction_of = A.candidate_id` on B and is excluded from gate
-  eligibility.
+- A transcript where a decision is disputed classifies as `disputed` with
+  `contradiction_note` set to the disputing statement, and is excluded
+  from gate eligibility (`disagreement.txt` fixture).
+- A transcript where a commitment is cancelled after being confirmed
+  classifies as `cancelled` with `contradiction_note` set to the
+  cancelling statement, and is excluded from gate eligibility
+  (`cancelled_commitment.txt` fixture).
+- A transcript where the deadline is corrected mid-thread resolves to the
+  corrected date on the final candidate (`deadline_change.txt` fixture).
+- A transcript where ownership is reassigned mid-thread resolves to the
+  new owner on the final candidate (`owner_reassignment.txt` fixture).
+- Note on `contradiction_of` vs `contradiction_note`: the reference
+  implementation (F005/F006/F009, `reference_pipeline.py`) collapses each
+  renegotiated thread into a single final candidate and uses
+  `contradiction_note` for human-readable context rather than emitting two
+  linked candidates via `contradiction_of`. See "Known failures /
+  limitations" in `progress.md` for why, and what revisiting this needs
+  (real before/after lineage once `F011`'s audit store exists).
 
 ## F010 — Deterministic safety gate
 
@@ -76,6 +99,18 @@ for backend, a scripted check for repo-level features) and is the bar
 
 - Every pipeline stage run against a fixture writes at least one
   `AuditEvent`; the sequence for one meeting is retrievable in order.
+
+## F011b — Structured meeting record synthesis
+
+- Given a list of `ResolvedItem`s for a meeting, `synthesize_meeting_record`
+  partitions every item into exactly one of `decisions` / `open_questions`
+  / `risks_blockers` / `action_items` by `kind` -- the union of all four
+  buckets equals the input set exactly (no item dropped or duplicated).
+- `executive_summary` is non-empty for any input, including an empty item
+  list (zero items is not an error).
+- The executive summary reflects the actual classifications present
+  (mentions disputed decisions when any exist, mentions cancellations when
+  any exist, lists confirmed commitments by owner).
 
 ## F012 — Human review API
 

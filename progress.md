@@ -2,25 +2,31 @@
 
 ## Current state
 
-Nine features done: repository scaffold, ingestion (txt/vtt/srt) +
+Eleven features done: repository scaffold, ingestion (txt/vtt/srt) +
 normalization, schemas, participant/date resolution, a deterministic
-reference extraction+validation pass (F005/F006/F009 combined), and the
-six-rule deterministic safety gate (F010). CommitGuard is built inside the
-existing `backend/app/commitguard/`; `frontend/src/commitguard/` starts at
-F013. Not yet built: persistence/audit store, human review API, review
-frontend, GitHub Issues tool, idempotency, evaluation harness, E2E test,
-demo freeze (F011-F019).
+reference extraction+validation pass (F005/F006/F009 combined), the
+six-rule deterministic safety gate (F010), plus two brief-compliance
+patches added mid-session after the official TechBharat Cohort #2 brief
+(PDF) was uploaded and read in full: F004b (action item `priority` field)
+and F011b (structured `MeetingRecord` synthesis: executive summary +
+decisions + open questions + risks/blockers + action items). CommitGuard
+is built inside the existing `backend/app/commitguard/`;
+`frontend/src/commitguard/` starts at F013. Not yet built: persistence/
+audit store, human review API, review frontend, GitHub Issues tool,
+idempotency, evaluation harness, E2E test, demo freeze (F011, F012-F019).
 
 ## Last verified commit
 
 HEAD at end of this session (`git log --oneline -1` from repo root, commit
-message "docs: maker-checker loop, demo script, maker/checker prompts").
-Full history this session, oldest to newest: chore(scaffold) -> F001 ->
-F004 -> F002+F003 -> F007 -> F008 -> F005+F006+F009 -> F010 -> docs.
+message reconciling docs against the official brief -- see git log for the
+exact hash). Full history this session, oldest to newest:
+chore(scaffold) -> F001 -> F004 -> F002+F003 -> F007 -> F008 ->
+F005+F006+F009 -> F010 -> docs -> F004b -> F011b -> docs (brief
+reconciliation).
 
 ## Active feature
 
-None (F001-F010 minus F011+ closed out; next pick is F011).
+None (F001-F010, F004b, F011b closed out; next pick is F011).
 
 ## Completed features
 
@@ -28,12 +34,14 @@ None (F001-F010 minus F011+ closed out; next pick is F011).
 - F002 — Transcript ingestion for txt/vtt/srt.
 - F003 — Transcript normalization into speaker segments.
 - F004 — Pydantic schemas and JSON validation.
+- F004b — Action item priority field (TechBharat brief compliance patch).
 - F005 — Candidate extraction pass (deterministic reference implementation).
 - F006 — Commitment validation pass (deterministic reference implementation).
 - F007 — Participant directory and owner resolution.
 - F008 — Relative date resolution.
 - F009 — Disagreement, cancellation, and correction detection.
 - F010 — Deterministic safety gate.
+- F011b — Structured meeting record synthesis.
 
 ## Verification evidence
 
@@ -151,14 +159,16 @@ evidence" above for the per-file breakdown).
    `git log --oneline -10`.
 2. Run `bash init.sh`.
 3. Start `F011` (persistence and audit event store) — the only remaining
-   feature whose dependency (`F004`) is already `done`. Everything past it
+   feature whose dependencies are already `done`. Everything past it
    (`F012`-`F019`) is gated behind it or `F014`/`F011` together.
 4. `F016` (evaluation dataset and scorer) is the natural point to decide
    whether the F005/F006 reference implementation gets replaced by an
    LLM-backed one, or kept and scored as the baseline -- read the
    "F005/F006 implementation note" in `docs/architecture.md` before
-   deciding.
-5. Do not touch F001-F010's files without a reason recorded here.
+   deciding. It's also where the official brief's numeric targets
+   (`docs/product.md`, "Official TechBharat judging metrics") get
+   measured for the first time.
+5. Do not touch F001-F011b's files without a reason recorded here.
 
 ## Session log template
 
@@ -318,3 +328,80 @@ remaining feature with all dependencies (`F004`) already done. F016
 (evaluation dataset and scorer) is the natural point to score the F005/F006
 reference implementation and decide whether to keep or replace it with an
 LLM.
+
+### Date: 2026-08-05
+### Agent/tool: Claude (Cowork)
+### Feature: F004b — Action item priority field; F011b — Structured
+meeting record synthesis; docs reconciliation against the official
+TechBharat Cohort #2 Buildathon Use Cases PDF (uploaded and read in full
+this session -- Use Case B, "Agentic AI Meeting Assistant", is
+CommitGuard's actual brief)
+### Files changed:
+- `backend/app/commitguard/models/schemas.py` — `Priority` enum,
+  `CandidateItem.priority`; `MeetingRecord` model
+- `backend/app/commitguard/models/__init__.py` — export `Priority`,
+  `MeetingRecord`
+- `backend/app/commitguard/agents/reference_pipeline.py` — `_derive_priority`,
+  applied at all three `ValidatedItem` construction sites
+- `backend/app/commitguard/agents/meeting_record.py` (new) —
+  `synthesize_meeting_record`, `_build_executive_summary`
+- `backend/app/commitguard/agents/__init__.py` — export
+  `synthesize_meeting_record`
+- `backend/app/commitguard/resolvers/combine.py` (new) —
+  `resolve_validated_item(s)`, the first glue wiring F006's output through
+  F007+F008 into a real `ResolvedItem`
+- `backend/app/commitguard/resolvers/__init__.py` — export the above
+- `backend/app/commitguard/tests/test_priority_field.py` (new, 4 tests)
+- `backend/app/commitguard/tests/test_meeting_record.py` (new, 8 tests)
+- `docs/data-contracts.md` — `priority` field + F004b section on
+  `CandidateItem`; new `MeetingRecord` section
+- `docs/acceptance-tests.md` — F004b section; F011b section; corrected
+  F009's acceptance criteria to describe `contradiction_note` (what's
+  actually implemented) instead of `contradiction_of` (what was originally
+  speced but not what F009 actually does -- see limitations below)
+- `docs/product.md` — brief source citation; official B.3 success-metrics
+  table (recall/precision/owner accuracy/date resolution/latency/
+  unapproved-actions/duplicate-suppression) with exact targets; brief
+  constraints (sandbox workspace, no real recordings without consent,
+  human approval doesn't reduce agency); executive summary in the product
+  description and core user flow
+- `feature_list.json` — new `F004b`, `F011b` entries, both `done`
+### Tests added: 12 new tests (4 + 8); full commitguard suite grew from
+232 to 244.
+### Commands run:
+```
+bash init.sh
+bash scripts/verify.sh
+cd backend && PYTHONPATH=$(pwd) python3 -m pytest -q app/commitguard/tests
+```
+### Verification result: 244/244 passed; `init.sh` and `scripts/verify.sh`
+both exit 0 from the fully built state. No regressions in the pre-existing
+232 tests from adding the `priority` field (default value keeps round-trip
+tests equal).
+### Known limitations:
+- The official brief's numeric judging targets (recall ≥80%, precision
+  ≥75%, owner accuracy ≥85%, date resolution ≥90%) are now documented in
+  `docs/product.md`, but nothing scores CommitGuard against them yet --
+  that's `F016` (evaluation dataset and scorer), still `todo`. The
+  deterministic reference implementation's actual recall/precision on a
+  labelled set is unmeasured.
+- `synthesize_meeting_record`'s executive summary is a deterministic
+  template (counts + a semicolon-joined list of confirmed commitments),
+  not natural prose -- same documented tradeoff as F005/F006.
+- Found and fixed a real spec/implementation mismatch while re-reading
+  `docs/acceptance-tests.md` against what F009 actually does: the original
+  acceptance criteria said cancellation "sets `contradiction_of` on B" --
+  the actual reference implementation never sets `contradiction_of` (it
+  collapses renegotiated threads into one final candidate and uses
+  `contradiction_note` instead, per the F010 session's known-limitations
+  note). Fixed the doc to describe reality rather than silently leaving a
+  false acceptance criterion in place.
+- Brief items still not reflected in any feature: diarization (brief says
+  "either from provided labels or through diarization" -- CommitGuard
+  currently only supports provided labels, which the brief explicitly
+  allows), and the brief's "at least one genuine side effect" requirement
+  is only satisfied once `F014` (GitHub Issues tool) actually lands, not
+  yet.
+### Next recommended feature: F011 (persistence and audit event store) --
+unblocks F012 (human review API), which is the dependency root for
+everything from F013 through F019.
