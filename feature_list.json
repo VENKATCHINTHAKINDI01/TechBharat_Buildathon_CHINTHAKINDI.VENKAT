@@ -91,7 +91,7 @@
       "id": "F010",
       "priority": "P0",
       "name": "Deterministic safety gate",
-      "status": "todo",
+      "status": "done",
       "depends_on": [
         "F006",
         "F007",
