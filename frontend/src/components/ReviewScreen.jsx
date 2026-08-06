@@ -1,9 +1,13 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { approveCandidate, editCandidate, getMeeting, rejectCandidate } from "../api/client";
 import CandidateCard from "./CandidateCard";
 import MeetingRecord from "./MeetingRecord";
 import AuditLog from "./AuditLog";
 import AgentTrace from "./AgentTrace";
+import SpeakerTagger from "./SpeakerTagger";
+import { useToast } from "../ui/toast";
+import { Loading, ErrorState } from "../ui/states";
+import { useShortcuts } from "../ui/CommandPalette";
 
 /**
  * An empty review queue, explained.
@@ -84,6 +88,8 @@ export default function ReviewScreen({ meetingId, uploadSummary, onBack, onOpenR
   const [error, setError] = useState(null);
   const [reviewer, setReviewer] = useState("demo_reviewer");
   const [refreshKey, setRefreshKey] = useState(0);
+  const [focused, setFocused] = useState(0);
+  const toast = useToast();
 
   const load = useCallback(async () => {
     try {
@@ -102,12 +108,51 @@ export default function ReviewScreen({ meetingId, uploadSummary, onBack, onOpenR
     setRefreshKey((k) => k + 1);
   };
 
-  if (error) return <div className="error">{error}</div>;
-  if (!detail) return <p className="muted">Loading meeting…</p>;
+  const candidates = detail?.candidates || [];
+
+  // J/K move a highlight through the queue; A and R act on it. Approving
+  // twenty items by mouse is the slowest part of a demo.
+  useShortcuts(
+    useMemo(
+      () => ({
+        j: () => setFocused((i) => Math.min(i + 1, Math.max(candidates.length - 1, 0))),
+        k: () => setFocused((i) => Math.max(i - 1, 0)),
+        a: async () => {
+          const target = candidates[focused];
+          if (!target || !target.gate.eligible || target.review_status) return;
+          try {
+            await approveCandidate(target.candidate_id, reviewer, ["github_issue"]);
+            toast.success("Approved", target.raw_text.slice(0, 70));
+            await refresh();
+          } catch (err) {
+            toast.error("Approval failed", err.message);
+          }
+        },
+        r: async () => {
+          const target = candidates[focused];
+          if (!target || target.review_status) return;
+          try {
+            await rejectCandidate(target.candidate_id, reviewer, "rejected in review");
+            toast.info("Rejected", target.raw_text.slice(0, 70));
+            await refresh();
+          } catch (err) {
+            toast.error("Rejection failed", err.message);
+          }
+        },
+      }),
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      [candidates, focused, reviewer, toast]
+    )
+  );
+
+  if (error) {
+    return <ErrorState title="Could not load this meeting" detail={error} onRetry={load} />;
+  }
+  if (!detail) return <Loading label="Loading meeting" card lines={3} />;
 
   const participants = detail.participants || [];
-  const eligible = detail.candidates.filter((c) => c.gate.eligible).length;
-  const blocked = detail.candidates.length - eligible;
+  const eligible = candidates.filter((c) => c.gate.eligible).length;
+  const blocked = candidates.length - eligible;
 
   return (
     <>
@@ -139,6 +184,15 @@ export default function ReviewScreen({ meetingId, uploadSummary, onBack, onOpenR
         </div>
       ))}
 
+      {/* Only renders when speech is still unattributed, which is the
+          case for an uploaded recording and never for a parsed
+          transcript. */}
+      <SpeakerTagger
+        meetingId={meetingId}
+        participants={participants}
+        onReanalysed={refresh}
+      />
+
       <MeetingRecord record={detail.record} />
 
       <section className="panel">
@@ -150,29 +204,50 @@ export default function ReviewScreen({ meetingId, uploadSummary, onBack, onOpenR
           <input id="reviewer" value={reviewer} onChange={(e) => setReviewer(e.target.value)} />
         </div>
 
-        {detail.candidates.length === 0 && <EmptyQueue extraction={detail.extraction} />}
+        {candidates.length === 0 && <EmptyQueue extraction={detail.extraction} />}
 
-        {detail.candidates.map((candidate) => (
+        <div className="stagger">
+        {candidates.map((candidate, index) => (
           <CandidateCard
             key={candidate.candidate_id}
+            focused={index === focused}
             candidate={candidate}
             participants={participants}
             reviewer={reviewer}
             onApprove={async (id, effects) => {
               const result = await approveCandidate(id, reviewer, effects);
+              const failed = (result.effects || []).filter((e) => e.status === "failed");
+              if (failed.length) {
+                toast.warn(
+                  `Approved, but ${failed.length} action failed`,
+                  failed[0].error || failed[0].effect
+                );
+              } else {
+                toast.success("Approved", candidate.raw_text.slice(0, 70));
+              }
               await refresh();
               return result;
             }}
             onReject={async (id) => {
               await rejectCandidate(id, reviewer, "rejected in review");
+              toast.info("Rejected", candidate.raw_text.slice(0, 70));
               await refresh();
             }}
             onEdit={async (id, changes) => {
               await editCandidate(id, reviewer, changes);
+              toast.success("Saved", "The safety gate re-evaluated the corrected values.");
               await refresh();
             }}
           />
         ))}
+        </div>
+
+        {candidates.length > 1 && (
+          <p className="muted" style={{ marginTop: 12 }}>
+            <kbd>J</kbd>/<kbd>K</kbd> move · <kbd>A</kbd> approve · <kbd>R</kbd> reject ·{" "}
+            <kbd>⌘K</kbd> palette
+          </p>
+        )}
       </section>
 
       <AgentTrace meetingId={meetingId} />

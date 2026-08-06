@@ -463,6 +463,56 @@ individually green while the path between them was broken.
 Test count 488 → 514. A 20-check end-to-end smoke over the real API
 passes 20/20.
 
+### 2026-08-06 — Session 11 (media upload, and a real design system)
+
+**F043/F044 audio and video upload.** Upload accepted only text, so the
+most obvious thing to try — dropping in the recording — failed with "must
+be UTF-8 text". ffmpeg now decodes audio *and* video to 16 kHz mono WAV,
+long files are cut into chunks under the API limit, and Whisper
+transcribes each one.
+
+The design question was speaker attribution, and it is the same wall the
+live path's remote track hit: Whisper returns words, not who said them.
+Every segment arrives as `Unknown speaker`, owner resolution fails closed,
+and nothing from an untagged recording can be approved. Guessing — or
+attributing everything to the uploader — would manufacture precisely the
+false attribution the gate exists to prevent, so the honest answer is an
+empty queue plus a way to fix it. `POST /meetings/{id}/speakers` is that
+way: per-segment assignment or whole-speaker relabelling, followed by
+re-extraction over the now-attributed transcript.
+
+Re-analysis **refuses once anything has been reviewed**. Re-extracting
+would either orphan the decision or re-create work that was already
+actioned, and both are worse than declining.
+
+**F045/F046 design system.** Every colour is now a semantic token, so the
+light theme is a re-map rather than a rewrite. Three-way theme switch
+(dark / light / follow the OS), persisted, live-updating when the OS
+preference changes. Plus toasts, a Cmd+K palette, J/K/A/R review
+shortcuts, skeleton loaders, designed empty states, and motion gated on
+`prefers-reduced-motion`.
+
+**F047 frontend tests.** The UI had none, which was defensible when it
+was one screen and not once it grew a theme system and a palette. Fifteen
+vitest/jsdom tests now run inside `verify.sh`, because `vite build` only
+proves the code parses.
+
+Two bugs the new tests caught immediately, both real:
+
+1. The command palette handled keys on its `<input>`, so **Escape did
+   nothing whenever focus had drifted** — click the backdrop, and the
+   modal became a trap. The listener now lives on the window.
+2. The floating PiP window hardcoded a dark background and does not
+   inherit `data-theme` from its opener, so it would have rendered dark
+   tokens on a light page.
+
+Also worth recording: verifying this properly was harder than expected.
+Chromium could not be installed in the sandbox (missing system libraries,
+no sudo), so screenshots were impossible and the jsdom harness became the
+substitute. **Layout and colour have still not been checked by eye.**
+
+Test count 526 backend + 15 frontend.
+
 ## Next session
 
 1. Read `AGENTS.md`, `README.md`, `docs/architecture.md`,

@@ -18,7 +18,7 @@ const ALL_EFFECTS = [
   ["notification", "Notify owner"],
 ];
 
-export default function CandidateCard({ candidate, participants, reviewer, onApprove, onReject, onEdit }) {
+export default function CandidateCard({ candidate, participants, reviewer, focused, onApprove, onReject, onEdit }) {
   const [open, setOpen] = useState(false);
   // Open by default when the terms changed mid-meeting — that is exactly
   // the case where the final state alone would mislead the reviewer.
@@ -53,7 +53,11 @@ export default function CandidateCard({ candidate, participants, reviewer, onApp
   }
 
   return (
-    <article className={`candidate ${eligible ? "eligible" : "blocked"} ${decided ? "done" : ""}`}>
+    <article
+      className={`candidate ${eligible ? "eligible" : "blocked"} ${decided ? "done" : ""}`}
+      // Keyboard focus needs a visible anchor, or J/K move an invisible cursor.
+      style={focused ? { outline: "2px solid var(--accent)", outlineOffset: 2 } : undefined}
+    >
       <h3>{candidate.raw_text}</h3>
 
       <div className="meta">

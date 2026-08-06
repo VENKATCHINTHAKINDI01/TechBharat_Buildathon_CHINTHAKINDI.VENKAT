@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { getReport, reportMarkdownUrl } from "../api/client";
 import CommitmentTimeline from "./CommitmentTimeline";
+import { AnimatedNumber, EmptyState, ErrorState, Loading } from "../ui/states";
 
 /**
  * The end-of-meeting report.
@@ -19,8 +20,8 @@ export default function ReportView({ meetingId, onBack, onOpenReview }) {
       .catch((err) => setError(err.message));
   }, [meetingId]);
 
-  if (error) return <div className="error">{error}</div>;
-  if (!report) return <p className="muted">Building report…</p>;
+  if (error) return <ErrorState title="Could not build this report" detail={error} />;
+  if (!report) return <Loading label="Building report" card lines={2} />;
 
   const statusOf = (item) =>
     item.actions?.some((a) => ["created", "duplicate_suppressed"].includes(a.status))
@@ -81,19 +82,27 @@ export default function ReportView({ meetingId, onBack, onOpenReview }) {
 
         <div className="buckets">
           <div className="bucket">
-            <div className="n" style={{ color: "var(--ok)" }}>{actioned}</div>
+            <div className="n" style={{ color: "var(--ok)" }}>
+              <AnimatedNumber value={actioned} />
+            </div>
             <div className="k">actioned</div>
           </div>
           <div className="bucket">
-            <div className="n" style={{ color: "var(--warn)" }}>{pending}</div>
+            <div className="n" style={{ color: "var(--warn)" }}>
+              <AnimatedNumber value={pending} />
+            </div>
             <div className="k">awaiting approval</div>
           </div>
           <div className="bucket">
-            <div className="n" style={{ color: "var(--bad)" }}>{blocked}</div>
+            <div className="n" style={{ color: "var(--bad)" }}>
+              <AnimatedNumber value={blocked} />
+            </div>
             <div className="k">blocked by gate</div>
           </div>
           <div className="bucket">
-            <div className="n">{report.decisions.length}</div>
+            <div className="n">
+              <AnimatedNumber value={report.decisions.length} />
+            </div>
             <div className="k">decisions</div>
           </div>
         </div>
@@ -102,7 +111,10 @@ export default function ReportView({ meetingId, onBack, onOpenReview }) {
       <section className="panel">
         <h2>Action items</h2>
         {report.action_items.length === 0 && (
-          <p className="muted">No action items were extracted from this meeting.</p>
+          <EmptyState icon="◇" title="No action items">
+            Nobody committed to anything in this meeting, or the commitments could not be
+            attributed to a named participant.
+          </EmptyState>
         )}
         {report.action_items.map((item) => {
           const status = statusOf(item);

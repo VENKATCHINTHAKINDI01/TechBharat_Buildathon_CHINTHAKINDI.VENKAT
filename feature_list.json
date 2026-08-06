@@ -415,6 +415,53 @@
       ]
     },
     {
+      "id": "F043",
+      "priority": "P0",
+      "name": "Audio and video upload with Whisper transcription",
+      "status": "done",
+      "depends_on": [
+        "F002",
+        "F029"
+      ]
+    },
+    {
+      "id": "F044",
+      "priority": "P0",
+      "name": "Speaker tagging and re-analysis for uploaded recordings",
+      "status": "done",
+      "depends_on": [
+        "F043",
+        "F007"
+      ]
+    },
+    {
+      "id": "F045",
+      "priority": "P1",
+      "name": "Design system with dark/light/system themes",
+      "status": "done",
+      "depends_on": [
+        "F013"
+      ]
+    },
+    {
+      "id": "F046",
+      "priority": "P1",
+      "name": "Command palette, shortcuts, toasts and motion",
+      "status": "done",
+      "depends_on": [
+        "F045"
+      ]
+    },
+    {
+      "id": "F047",
+      "priority": "P1",
+      "name": "Frontend test harness (vitest + jsdom)",
+      "status": "done",
+      "depends_on": [
+        "F045"
+      ]
+    },
+    {
       "id": "F019",
       "priority": "P0",
       "name": "Evaluation report and demo freeze",

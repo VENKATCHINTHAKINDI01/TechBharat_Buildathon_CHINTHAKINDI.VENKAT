@@ -126,7 +126,11 @@ echo "== verify: frontend =="
 $PY -c "import json; json.load(open('frontend/package.json'))"
 if [ -d frontend/node_modules ]; then
   (cd frontend && npm run build --silent >/dev/null) || { echo "FAIL: frontend build failed"; exit 1; }
-  echo "ok (built)"
+  # A build only proves the code parses. The tests prove it renders --
+  # which is what actually broke when the UI grew a theme system, a
+  # command palette and toasts.
+  (cd frontend && npm test --silent >/dev/null 2>&1) || { echo "FAIL: frontend tests failed"; exit 1; }
+  echo "ok (built + tested)"
 else
   echo "ok (package.json valid; run 'npm install' in frontend/ to enable the build check)"
 fi

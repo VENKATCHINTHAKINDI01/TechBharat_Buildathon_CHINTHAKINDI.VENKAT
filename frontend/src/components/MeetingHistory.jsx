@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { deleteMeeting, listMeetings } from "../api/client";
+import { EmptyState, ErrorState, Loading } from "../ui/states";
 
 /**
  * Every meeting this workspace has seen, newest first.
@@ -35,17 +36,17 @@ export default function MeetingHistory({ onOpenReview, onOpenReport }) {
     }
   }
 
-  if (error) return <div className="error">{error}</div>;
-  if (!meetings) return <p className="muted">Loading meetings…</p>;
+  if (error) return <ErrorState title="Could not load meetings" detail={error} />;
+  if (!meetings) return <Loading label="Loading meetings" card lines={3} />;
 
   if (meetings.length === 0) {
     return (
       <section className="panel">
         <h2>Past meetings</h2>
-        <p className="muted">
-          Nothing yet. Upload a transcript or run a live meeting, and it will appear here with its
-          report and everything that was actioned.
-        </p>
+        <EmptyState icon="⧉" title="No meetings yet">
+          Upload a transcript or a recording, or run a live meeting. Each one appears here with
+          its report and everything that was actioned.
+        </EmptyState>
       </section>
     );
   }

@@ -157,3 +157,25 @@ export function openLiveSocket() {
   const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
   return new WebSocket(`${proto}//${window.location.host}/api/live`);
 }
+
+/**
+ * Say who spoke, and (by default) re-run extraction over the newly
+ * attributed transcript. This is what makes an uploaded recording
+ * usable: until speech has an owner, every commitment is gate-blocked.
+ */
+export async function assignSpeakers(
+  meetingId,
+  { assignments = {}, relabel = {}, reanalyze = true, reviewer = "demo_reviewer" }
+) {
+  try {
+    const { data } = await client.post(`/meetings/${meetingId}/speakers`, {
+      assignments,
+      relabel,
+      reanalyze,
+      reviewer,
+    });
+    return data;
+  } catch (error) {
+    throw unwrapError(error);
+  }
+}

@@ -68,7 +68,14 @@ export default function FloatingBar({
       });
 
       win.document.body.style.margin = "0";
-      win.document.body.style.background = "var(--bg, #0f1115)";
+      // The PiP window is a separate document, so it inherits neither the
+      // stylesheet nor the data-theme attribute. Copy the attribute over
+      // or the panel renders dark tokens on a light page.
+      win.document.documentElement.setAttribute(
+        "data-theme",
+        document.documentElement.getAttribute("data-theme") || "dark"
+      );
+      win.document.body.style.background = "var(--bg)";
       win.document.title = "Naina — Nexvi.Meets";
       win.addEventListener("pagehide", () => setPipWindow(null));
       setPipWindow(win);
