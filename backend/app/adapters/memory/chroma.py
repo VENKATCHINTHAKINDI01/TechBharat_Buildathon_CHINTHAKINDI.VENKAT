@@ -21,17 +21,33 @@ COLLECTION = "approved_commitments"
 _client = None
 
 
+def _build_client(settings: Settings):
+    """Return a Chroma cloud client when credentials are present,
+    otherwise fall back to the local PersistentClient."""
+    import chromadb
+
+    if settings.chroma_cloud_enabled:
+        return chromadb.HttpClient(
+            host="api.trychroma.com",
+            ssl=True,
+            tenant=settings.chroma_tenant,
+            database=settings.chroma_database,
+            headers={"x-chroma-token": settings.chroma_api_key},
+        )
+    return chromadb.PersistentClient(path=settings.chroma_persist_dir)
+
+
 def _get_collection(settings: Settings):
     global _client
     try:
-        import chromadb
-    except ImportError as exc:  # pragma: no cover - dependency is declared
+        import chromadb  # noqa: F401
+    except ImportError as exc:  # pragma: no cover
         raise MemoryError_(
             "chromadb is not installed. pip install -r backend/requirements.txt"
         ) from exc
 
     if _client is None:
-        _client = chromadb.PersistentClient(path=settings.chroma_persist_dir)
+        _client = _build_client(settings)
     return _client.get_or_create_collection(
         name=COLLECTION,
         metadata={"description": "Human-approved commitments only"},

@@ -1,17 +1,165 @@
-*.egg-info/
-*.pyc
-*.pyo
-.DS_Store
+# =============================================================================
+# Nexvi.Meets — comprehensive .gitignore
+# =============================================================================
+
+# =============================================================================
+# SECRETS & CREDENTIALS — highest priority, never commit these
+# =============================================================================
 .env
-.mypy_cache/
-.pytest_cache/
-.venv/
-.vite-lint-out/
-.vite/
-__pycache__/
-chroma_data/
+.env.local
+.env.*.local
+backend/.env
+backend/.env.*
+!backend/.env.example
+
+# Google OAuth files — created by the OAuth desktop flow
 credentials.json
-dist/
-node_modules/
 token.json
+backend/credentials.json
+backend/token.json
+
+# Any stray key/cert files
+*.pem
+*.key
+*.p12
+*.pfx
+service-account*.json
+
+# =============================================================================
+# PYTHON
+# =============================================================================
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+MANIFEST
+
+# Virtual environments
+.venv/
 venv/
+env/
+ENV/
+.python-version
+
+# pytest / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+*.coveragerc
+
+# mypy / type checkers
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyright/
+.ruff_cache/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# =============================================================================
+# NODE / FRONTEND
+# =============================================================================
+
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/build/
+frontend/.vite/
+
+# package-lock is committed; ignore other generated lock files
+yarn.lock
+pnpm-lock.yaml
+
+# Vite lint output
+.vite-lint-out/
+
+# =============================================================================
+# DATABASES & GENERATED DATA
+# =============================================================================
+
+# ChromaDB local persistence (used when Chroma Cloud is not configured)
+chroma_data/
+backend/chroma_data/
+*.chroma/
+
+# SQLite (not used by this project but common accidental files)
+*.sqlite
+*.sqlite3
+*.db
+
+# =============================================================================
+# DOCKER & INFRASTRUCTURE
+# =============================================================================
+
+# Docker override files with local secrets
+docker-compose.override.yml
+docker-compose.local.yml
+
+# =============================================================================
+# EDITORS & OS
+# =============================================================================
+
+# macOS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# VS Code
+.vscode/settings.json
+.vscode/launch.json
+.vscode/tasks.json
+# Keep .vscode/extensions.json if you want to share recommended extensions
+
+# JetBrains / PyCharm
+.idea/
+*.iml
+*.iws
+
+# Vim / Emacs
+*.swp
+*.swo
+*~
+\#*\#
+.\#*
+
+# =============================================================================
+# LOGS
+# =============================================================================
+
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# =============================================================================
+# MISC
+# =============================================================================
+
+# macOS extended attributes on zip archives
+*.zip.cpgz
+
+# Temporary files
+*.tmp
+*.temp
+tmp/
+temp/

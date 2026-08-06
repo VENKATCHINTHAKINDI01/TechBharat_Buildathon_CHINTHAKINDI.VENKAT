@@ -57,8 +57,13 @@ class Settings(BaseSettings):
     google_token_path: str = "token.json"
     google_calendar_id: str = "primary"
 
-    # --- Cross-meeting memory (ChromaDB, local persistent) ---
+    # --- Cross-meeting memory (ChromaDB) ---
+    # Local fallback: used when CHROMA_API_KEY is not set.
     chroma_persist_dir: str = "./chroma_data"
+    # Chroma Cloud: set all three to use the hosted service instead of local.
+    chroma_api_key: str = ""
+    chroma_tenant: str = ""
+    chroma_database: str = ""
     memory_similarity_threshold: float = 0.35
 
     # --- Agent orchestration: "inhouse" | "langgraph" ---
@@ -93,6 +98,12 @@ class Settings(BaseSettings):
                 "token with 'issues: write'. Set them in backend/.env."
             )
         return self.github_token, self.github_repo
+
+    @property
+    def chroma_cloud_enabled(self) -> bool:
+        """True when all three Chroma Cloud credentials are present.
+        If False, the adapter falls back to the local PersistentClient."""
+        return bool(self.chroma_api_key and self.chroma_tenant and self.chroma_database)
 
     @property
     def groq_enabled(self) -> bool:
