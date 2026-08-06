@@ -20,6 +20,7 @@ from app.adapters.transcription.base import (
     TranscriptionResult,
     TranscriptSpan,
 )
+from app.adapters.transcription.languages import normalize_language_code
 from app.core.config import Settings, get_settings
 
 
@@ -43,7 +44,7 @@ class SarvamTranscriber:
             "model": self._settings.sarvam_stt_model,
             # "unknown" asks Saarika to auto-detect, which is what makes
             # code-mixed input workable without pre-splitting by language.
-            "language_code": self._settings.sarvam_language_code,
+            "language_code": normalize_language_code(self._settings.sarvam_language_code),
         }
 
         try:

@@ -181,3 +181,87 @@ async def test_both_failing_raises_rather_than_inventing():
 async def test_null_transcriber_refuses_with_actionable_advice():
     with pytest.raises(TranscriptionError, match="GROQ_API_KEY"):
         await NullTranscriber().transcribe(_chunk())
+
+
+# --- language codes --------------------------------------------------------
+#
+# A wrong language_code was rejected by Sarvam with a 400 during the
+# END-OF-MEETING diarization pass -- after the call was over and the audio
+# already captured. These pin the coercion so a config typo cannot get
+# that far again.
+
+
+def test_auto_detect_spellings_all_mean_unknown():
+    from app.adapters.transcription.languages import normalize_language_code
+
+    for spelling in ["auto-detect", "auto", "autodetect", "auto_detect", "detect", "", "  ", None]:
+        assert normalize_language_code(spelling) == "unknown", spelling
+
+
+def test_valid_sarvam_codes_pass_through():
+    from app.adapters.transcription.languages import SARVAM_LANGUAGE_CODES, normalize_language_code
+
+    for code in SARVAM_LANGUAGE_CODES:
+        assert normalize_language_code(code) == code
+
+
+def test_bare_and_named_languages_expand_to_the_regional_form():
+    from app.adapters.transcription.languages import normalize_language_code
+
+    assert normalize_language_code("te") == "te-IN"
+    assert normalize_language_code("Telugu") == "te-IN"
+    assert normalize_language_code("hindi") == "hi-IN"
+    assert normalize_language_code("TE-IN") == "te-IN"
+
+
+def test_an_unrecognised_code_degrades_to_auto_detect():
+    from app.adapters.transcription.languages import normalize_language_code
+
+    assert normalize_language_code("klingon") == "unknown"
+
+
+def test_settings_coerce_a_bad_language_code_at_startup():
+    """Caught at load time, so the worst case is a log line rather than a
+    400 at the end of a meeting."""
+    assert Settings(sarvam_language_code="auto-detect").sarvam_language_code == "unknown"
+    assert Settings(sarvam_language_code="Telugu").sarvam_language_code == "te-IN"
+
+
+async def test_the_transcriber_never_sends_an_invalid_language_code():
+    from app.adapters.transcription.languages import SARVAM_LANGUAGE_CODES
+
+    sent = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = request.content.decode("utf-8", "ignore")
+        for code in SARVAM_LANGUAGE_CODES:
+            if f'\r\n\r\n{code}\r\n' in body:
+                sent["language_code"] = code
+        return httpx.Response(200, json={"transcript": "hello", "language_code": "en-IN"})
+
+    # Even if something bypasses the Settings validator, the call site coerces.
+    settings = Settings(sarvam_api_key="k")
+    object.__setattr__(settings, "sarvam_language_code", "auto-detect")
+
+    await SarvamTranscriber(settings, client=_client(handler)).transcribe(_chunk())
+    assert sent.get("language_code") == "unknown"
+
+
+async def test_the_diarizer_never_sends_an_invalid_language_code():
+    from app.adapters.transcription.languages import SARVAM_LANGUAGE_CODES
+    from app.services.diarization import SarvamDiarizer
+
+    sent = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = request.content.decode("utf-8", "ignore")
+        for code in SARVAM_LANGUAGE_CODES:
+            if f'\r\n\r\n{code}\r\n' in body:
+                sent["language_code"] = code
+        return httpx.Response(200, json={"diarized_transcript": {"entries": []}})
+
+    settings = Settings(sarvam_api_key="k")
+    object.__setattr__(settings, "sarvam_language_code", "auto-detect")
+
+    await SarvamDiarizer(settings, client=_client(handler)).diarize(b"audio", "audio/webm")
+    assert sent.get("language_code") == "unknown"

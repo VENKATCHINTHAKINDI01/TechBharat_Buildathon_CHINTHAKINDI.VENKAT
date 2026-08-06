@@ -26,6 +26,7 @@ from typing import Optional, Protocol, runtime_checkable
 
 import httpx
 
+from app.adapters.transcription.languages import normalize_language_code
 from app.core.config import Settings, get_settings
 
 logger = logging.getLogger("nexvi_meets.diarization")
@@ -142,7 +143,7 @@ class SarvamDiarizer:
         files = {"file": ("remote-track.webm", audio, mime)}
         data = {
             "model": self._settings.sarvam_stt_model,
-            "language_code": self._settings.sarvam_language_code,
+            "language_code": normalize_language_code(self._settings.sarvam_language_code),
             "with_diarization": "true",
         }
 

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -78,6 +79,20 @@ class Settings(BaseSettings):
     live_asr_language: str = ""
     sarvam_api_base: str = "https://api.sarvam.ai"
     sarvam_stt_model: str = "saarika:v2.5"
+
+    @field_validator("sarvam_language_code")
+    @classmethod
+    def _valid_sarvam_language(cls, value: str) -> str:
+        """Coerce at load time.
+
+        A typo here previously reached Sarvam and came back as a 400
+        during the end-of-meeting diarization pass -- after the call was
+        over and the audio already captured. Catching it at startup means
+        the worst case is a log line, not a lost speaker refinement.
+        """
+        from app.adapters.transcription.languages import normalize_language_code
+
+        return normalize_language_code(value)
     sarvam_language_code: str = "unknown"   # "unknown" = auto-detect
     # Seconds of audio per chunk. Lower = snappier, more requests.
     live_chunk_seconds: int = 6
