@@ -41,7 +41,11 @@ class Settings(BaseSettings):
 
     # --- Groq (primary extractor; falls back to the deterministic one) ---
     groq_api_key: str = ""
-    groq_model: str = "llama-3.3-70b-versatile"
+    # `llama-3.3-70b-versatile` shuts down 2026-08-16. Groq's own
+    # recommended replacement, and it is faster (500 vs 280 t/s) and
+    # cheaper on both input and output. Production tier, so it will not
+    # disappear at short notice the way a preview model can.
+    groq_model: str = "openai/gpt-oss-120b"
     groq_timeout_seconds: float = 60.0
 
     # --- GitHub Issues (the one deep integration; required at runtime) ---

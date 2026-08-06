@@ -355,6 +355,55 @@ than a merged meeting.
 
 Test count 452 → 479. Frontend builds clean.
 
+### 2026-08-06 — Session 9 (Groq timelines, model migration, live preflight)
+
+**The Groq model was 11 days from dying.** `llama-3.3-70b-versatile` was
+deprecated on 2026-06-17 with a shutdown date of **2026-08-16**. It still
+worked, so nothing looked wrong — the failure would have arrived
+mid-buildathon with nobody having changed a line. Migrated to
+`openai/gpt-oss-120b`, Groq's own recommended replacement: faster (500 vs
+280 t/s), cheaper on both input and output, and production-tier rather
+than preview. The preflight now fails loudly on either shut-down model ID.
+
+**F039 Groq emits commitment timelines.** Previously only the
+deterministic extractor produced events, which meant the state engine —
+the session-8 centrepiece — was dead on the primary path. The prompt now
+asks for a per-item event list with a worked renegotiation example, and
+every event clears two deterministic filters the model cannot influence:
+
+1. the quote must be a verbatim substring of the segment it cites, the
+   same standard `drop_unsupported_evidence` applies to evidence;
+2. the transition must be legal under `LEGAL_TRANSITIONS`.
+
+So a confused model produces a **shorter** thread, never a wrong one.
+Where the model's claimed classification contradicts its own timeline
+("confirmed" on a thread ending at `reassigned`), the timeline wins,
+because it is the part backed by quotes — and `suggestion` is the
+direction that cannot reach GitHub. The thread's final owner and date
+also override the model's summary fields, which tend to be filled from
+the first mention rather than the last.
+
+**F040 live preflight.** `scripts/live_check.py` is the only thing in the
+repo that touches real services. It checks config → Mongo connect, write
+and unique indexes → Groq auth, model availability and a real extraction
+on a known renegotiation → Whisper availability → GitHub read,
+issues-enabled and an **actual issue create-and-close** → Sarvam, Chroma,
+Calendar. Per the user's decision it really does write to GitHub: a
+read-only check passes right up until the demo, which is precisely the
+failure that already bit this project once.
+
+Building it caught two things worth recording. Its first version died
+with a traceback when the sandbox's SOCKS proxy broke httpx client
+construction — a diagnostic tool that crashes is the thing it exists to
+prevent, so every client construction is now guarded and reported as one
+more line. And DNS SRV failure needed separating from the Atlas IP
+allowlist: both look like "cannot reach Mongo" but have completely
+different fixes.
+
+Test count 479 → 488. Still true, and still the biggest risk: **no live
+run has actually succeeded yet.** The preflight has only ever been run
+from a sandbox with no network route to any of the three services.
+
 ## Next session
 
 1. Read `AGENTS.md`, `README.md`, `docs/architecture.md`,

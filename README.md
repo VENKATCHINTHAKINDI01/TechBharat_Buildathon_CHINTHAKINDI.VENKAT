@@ -131,6 +131,25 @@ cd frontend && npm install && npm run dev  # 4. frontend -> :5173
 Open <http://localhost:5173>. The status bar shows which integrations are
 live. API docs at <http://localhost:8000/docs>.
 
+### Before the first run: preflight the real services
+
+```bash
+cd backend && python ../scripts/live_check.py
+```
+
+The only thing in the repo that touches real Mongo, Groq and GitHub —
+everything else runs on in-memory adapters. It verifies the database
+connects *and writes*, that your Groq key can use the configured model,
+that a real extraction returns the right final owner, and that the GitHub
+token can genuinely create an issue (it creates one and closes it). Every
+failure prints the fix, not a stack trace.
+
+> **`GROQ_MODEL` must be `openai/gpt-oss-120b`.** The old default,
+> `llama-3.3-70b-versatile`, was shut down by Groq on 16 August 2026.
+> The preflight fails loudly if your `.env` still names it.
+
+Full runbook, including the end-to-end walkthrough: [`docs/live-run.md`](docs/live-run.md).
+
 > **Use a sandbox GitHub repo.** The brief forbids demoing against a live
 > production tracker, and Nexvi.Meets creates real issues.
 
@@ -325,7 +344,7 @@ bash init.sh              # health checks + full verification
 bash scripts/verify.sh    # tests, schema, docs, safety boundary, frontend build
 ```
 
-**479 tests pass**, with no network access and no credentials required.
+**488 tests pass**, with no network access and no credentials required.
 `verify.sh` additionally proves structurally that extraction and the agents
 cannot import a side-effecting adapter, that only `approval.py` invokes a
 side-effecting tool, and that `check_gate`'s signature hasn't drifted.
@@ -357,6 +376,7 @@ why Groq is primary when a key is present.
 | [`docs/data-contracts.md`](docs/data-contracts.md) | every schema, the source of truth |
 | [`docs/acceptance-tests.md`](docs/acceptance-tests.md) | per-feature definition of done |
 | [`docs/demo-script.md`](docs/demo-script.md) | the walkthrough |
+| [`docs/live-run.md`](docs/live-run.md) | running against real Mongo/Groq/GitHub, and the failures to expect |
 | [`progress.md`](progress.md) | session log, evidence, honest known limitations |
 
 ---
@@ -364,14 +384,15 @@ why Groq is primary when a key is present.
 ## Known limitations
 
 - **No live run against real Mongo / Groq / GitHub / Calendar has been
-  performed.** All 479 tests use in-memory adapters and a stubbed Groq
-  client. The real adapters are written and typed but unverified in the
-  wild. **Do this before demoing.**
-- **Only the deterministic extractor emits commitment timelines.** The
-  Groq extractor returns a single state per item, so on the Groq path the
-  timeline view is empty and the state engine adds nothing. The engine,
-  the gate rule and the UI are all real; the LLM prompt has not yet been
-  taught to produce the events that feed them.
+  performed.** All 488 tests use in-memory adapters and a stubbed Groq
+  client. `scripts/live_check.py` exists to close this and prints the fix
+  for each failure — but it has not yet been run successfully end to end.
+  **Do this before demoing:** [`docs/live-run.md`](docs/live-run.md).
+- Groq now emits commitment timelines, but **how well it does so is
+  unmeasured**. Malformed events are dropped deterministically, so the
+  failure mode is a short timeline rather than a wrong one — a model that
+  ignores the field degrades to today's behaviour, not to something
+  unsafe.
 - The pause/resume recorder lifecycle is covered by websocket tests but
   has never been exercised by an actual browser.
 - The evaluation numbers above are on self-labelled fixtures, not a gold

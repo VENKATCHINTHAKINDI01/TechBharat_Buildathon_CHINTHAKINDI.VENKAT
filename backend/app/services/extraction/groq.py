@@ -26,6 +26,12 @@ from __future__ import annotations
 import json
 
 from app.core.config import Settings, get_settings
+from app.domain.commitment import (
+    STATE_TO_CLASSIFICATION,
+    CommitmentEvent,
+    CommitmentState,
+    CommitmentThread,
+)
 from app.domain.models import (
     CandidateKind,
     Classification,
@@ -62,10 +68,62 @@ Return ONLY a JSON object of this exact shape:
       "evidence": [
         {"segment_id": "the id of the segment", "quote": "an EXACT substring of that segment"}
       ],
-      "contradiction_note": "if this was disputed, cancelled or corrected, the statement that did so; else null"
+      "contradiction_note": "if this was disputed, cancelled or corrected, the statement that did so; else null",
+      "timeline": [
+        {
+          "state": "proposed" | "accepted" | "reassigned" | "deadline_changed" | "disputed" | "rejected" | "cancelled",
+          "segment_id": "the id of the segment where this happened",
+          "quote": "an EXACT substring of that segment",
+          "actor": "the speaker of that segment",
+          "owner_mention": "the person named as owner by THIS event, or null",
+          "date_mention": "the date phrase given by THIS event, or null"
+        }
+      ]
     }
   ]
 }
+
+The "timeline" is how the commitment MOVED during the meeting, in order. It is the \
+most important field, so read this carefully.
+
+A commitment is not a fact stated once. Someone proposes it, someone accepts it, it \
+gets handed to a different person, the deadline slips, someone objects, it gets called \
+off. Record one event per turn where something CHANGED, each with the line that caused \
+it. A task that was stated once and stood has a short timeline; that is fine and correct.
+
+Timeline rules:
+- The FIRST event is usually "proposed" (someone asked) or "accepted" (someone \
+  volunteered outright: "I'll take that").
+- "accepted" means the person who would DO the work agreed. The asker saying "yes, \
+  Rohit will do it" is NOT acceptance -- Rohit has to agree. If Rohit never answers, \
+  the thread ends at "proposed".
+- "reassigned" when the work moves to a different person. "deadline_changed" when the \
+  date moves. After EITHER, the thread is unsettled again -- only add a further \
+  "accepted" if the NEW owner actually agreed to the NEW terms in the transcript.
+- "disputed" when the room did not reach consensus. "rejected" when the named owner \
+  declined. "cancelled" when agreed work was later called off.
+- These sequences are impossible; never produce them: anything before the first event \
+  other than proposed/accepted/disputed; "deadline_changed" or "reassigned" straight \
+  after nothing.
+- Every event's "quote" must appear character-for-character in the segment it cites, \
+  exactly like the evidence quotes.
+
+The "classification" you return MUST match where the timeline ends: ending at \
+"accepted" is "confirmed"; ending at "proposed", "reassigned" or "deadline_changed" is \
+"suggestion"; ending at "disputed"/"rejected"/"cancelled" is that same word.
+
+Worked example. For this transcript:
+  [s1] Arjun: Rohit, can you finish the API migration by Friday?
+  [s2] Rohit: Yes, I'll have it done by Friday.
+  [s3] Rohit: Actually I'm swamped, Meera could you take it?
+  [s4] Meera: Sure, I can do it. But Thursday, not Friday.
+the timeline is:
+  proposed(s1, Arjun, owner_mention "Rohit", date_mention "Friday")
+  accepted(s2, Rohit)
+  reassigned(s3, Rohit, owner_mention "Meera")
+  accepted(s4, Meera, date_mention "Thursday")
+so the final owner is Meera, the final date is Thursday, and classification is \
+"confirmed" because Meera accepted the changed terms herself.
 
 Classification rules -- these decide whether real work gets created, so be strict:
 - "confirmed": the named owner explicitly accepted the work. "Yes, I'll do it by Friday."
@@ -78,7 +136,8 @@ Hard rules:
 - NEVER invent an owner, a date, or a quote. If a due date was not spoken, use null.
 - Every "quote" MUST appear character-for-character inside the segment you cite.
 - If an item was later reassigned, use the FINAL owner. If the deadline was changed, use \
-the FINAL date. Cite both the original and the correcting statement as evidence.
+the FINAL date. Cite both the original and the correcting statement as evidence, and \
+record both as timeline events.
 - "confidence" is your certainty that this is a genuine commitment, not that you \
 understood the sentence.
 - The transcript may mix English with Hindi or Telugu in one sentence. Read it correctly \
@@ -86,6 +145,7 @@ and write "text" in English, but keep "quote" in the original language, verbatim
 - Output valid JSON only. No markdown fences, no commentary.
 """
 
+_STATE_BY_NAME = {s.value: s for s in CommitmentState}
 _KIND_BY_NAME = {k.value: k for k in CandidateKind}
 _CLASSIFICATION_BY_NAME = {c.value: c for c in Classification}
 _PRIORITY_BY_NAME = {p.value: p for p in Priority}
@@ -103,6 +163,7 @@ class GroqExtractor:
     def __init__(self, settings: Settings | None = None, client=None) -> None:
         self._settings = settings or get_settings()
         self._client = client
+        self._segment_start: dict[str, int] = {}
 
     def _get_client(self):
         if self._client is None:
@@ -135,9 +196,66 @@ class GroqExtractor:
         except Exception as exc:  # noqa: BLE001 -- any provider failure is a fallback trigger
             raise ExtractionError(f"Groq extraction failed: {exc}") from exc
 
-        return self._parse(raw, meeting_id)
+        return self._parse(raw, meeting_id, segments)
 
-    def _parse(self, raw: str, meeting_id: str) -> list[ValidatedItem]:
+    def _build_thread(
+        self,
+        raw_events: object,
+        *,
+        thread_id: str,
+        meeting_id: str,
+        segment_text: dict[str, str],
+    ) -> CommitmentThread:
+        """Turn the model's claimed timeline into a validated thread.
+
+        Two filters, both deterministic, both outside the model's reach:
+
+        1. **The quote must be real.** An event citing words nobody said
+           is dropped, exactly as ``drop_unsupported_evidence`` treats
+           evidence. A state change is only as good as the line behind it.
+        2. **The transition must be legal.** ``add(strict=False)`` drops
+           anything the state machine forbids, so a model that emits
+           "cancelled" before anything was proposed corrupts nothing.
+
+        The result is that a confused model produces a *shorter* thread,
+        never a wrong one.
+        """
+        thread = CommitmentThread(thread_id=thread_id, meeting_id=meeting_id)
+        if not isinstance(raw_events, list):
+            return thread
+
+        for raw_event in raw_events:
+            if not isinstance(raw_event, dict):
+                continue
+            state = _STATE_BY_NAME.get(str(raw_event.get("state")))
+            if state is None:
+                continue
+
+            segment_id = str(raw_event.get("segment_id") or "")
+            quote = str(raw_event.get("quote") or "")
+            if not quote or quote not in segment_text.get(segment_id, ""):
+                continue
+
+            thread.add(
+                CommitmentEvent(
+                    state=state,
+                    segment_id=segment_id,
+                    quote=quote,
+                    at_ms=self._segment_start.get(segment_id, 0),
+                    actor=(raw_event.get("actor") or None),
+                    owner_mention=(raw_event.get("owner_mention") or None),
+                    date_mention=(raw_event.get("date_mention") or None),
+                ),
+                strict=False,
+            )
+        return thread
+
+    def _parse(
+        self,
+        raw: str,
+        meeting_id: str,
+        segments: list[TranscriptSegment] | None = None,
+    ) -> list[ValidatedItem]:
         try:
             data = json.loads(raw)
         except (json.JSONDecodeError, TypeError) as exc:
@@ -146,6 +264,10 @@ class GroqExtractor:
         raw_items = data.get("items")
         if not isinstance(raw_items, list):
             raise ExtractionError("Groq response has no 'items' list")
+
+        segments = segments or []
+        segment_text = {s.segment_id: s.text for s in segments}
+        self._segment_start = {s.segment_id: s.start_ms for s in segments}
 
         validated: list[ValidatedItem] = []
         for index, raw_item in enumerate(raw_items):
@@ -181,6 +303,32 @@ class GroqExtractor:
                 # gate would block it anyway. Drop rather than downgrade.
                 continue
 
+            thread = self._build_thread(
+                raw_item.get("timeline"),
+                thread_id=f"{meeting_id}-t{index:03d}",
+                meeting_id=meeting_id,
+                segment_text=segment_text,
+            )
+
+            owner_mention = raw_item.get("owner_mention") or None
+            date_mention = raw_item.get("date_mention") or None
+
+            if thread.events:
+                # The state engine is the source of truth. Where the model
+                # claimed a classification that contradicts its own
+                # timeline -- "confirmed" on a thread that ends at
+                # reassigned, say -- the timeline wins, because it is the
+                # part backed by verbatim quotes.
+                classification = _CLASSIFICATION_BY_NAME.get(
+                    STATE_TO_CLASSIFICATION.get(thread.current_state, ""),
+                    Classification.suggestion,
+                )
+                # Likewise the latest owner and date named in the thread
+                # beat the summary fields, which models tend to fill in
+                # from the first mention rather than the last.
+                owner_mention = thread.current_owner_mention or owner_mention
+                date_mention = thread.current_date_mention or date_mention
+
             validated.append(
                 ValidatedItem(
                     candidate_id=f"{meeting_id}-c{index:03d}",
@@ -188,12 +336,17 @@ class GroqExtractor:
                     kind=kind,
                     raw_text=text,
                     evidence_quotes=evidence,
-                    raw_owner_mention=(raw_item.get("owner_mention") or None),
-                    raw_date_mention=(raw_item.get("date_mention") or None),
+                    raw_owner_mention=owner_mention,
+                    raw_date_mention=date_mention,
                     priority=priority,
                     confidence=confidence,
                     classification=classification,
                     contradiction_note=(raw_item.get("contradiction_note") or None),
+                    timeline=thread.timeline(),
+                    current_state=(
+                        thread.current_state.value if thread.current_state else None
+                    ),
+                    was_renegotiated=thread.was_renegotiated,
                 )
             )
 

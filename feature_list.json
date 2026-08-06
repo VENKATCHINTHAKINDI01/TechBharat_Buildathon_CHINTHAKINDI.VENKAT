@@ -377,6 +377,25 @@
       ]
     },
     {
+      "id": "F039",
+      "priority": "P0",
+      "name": "Groq emits validated commitment timelines",
+      "status": "done",
+      "depends_on": [
+        "F035"
+      ]
+    },
+    {
+      "id": "F040",
+      "priority": "P0",
+      "name": "Live integration preflight against real Mongo, Groq and GitHub",
+      "status": "done",
+      "depends_on": [
+        "F011",
+        "F014"
+      ]
+    },
+    {
       "id": "F019",
       "priority": "P0",
       "name": "Evaluation report and demo freeze",
