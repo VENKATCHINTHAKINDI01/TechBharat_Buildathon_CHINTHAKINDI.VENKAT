@@ -57,7 +57,16 @@ class CandidateView(BaseModel):
     date_resolution_method: str
     priority: Priority
     confidence: float
+    # Per-field, so the UI can point at the weak part instead of showing
+    # one number the reviewer has to interpret.
+    field_confidence: dict[str, float] = Field(default_factory=dict)
     contradiction_note: Optional[str]
+    # How this commitment moved during the meeting, with the line that
+    # caused each move. Empty for items that were stated once and stood.
+    timeline: list[dict] = Field(default_factory=list)
+    current_state: Optional[str] = None
+    was_renegotiated: bool = False
+    human_confirmed: bool = False
     evidence: list[dict]
     gate: GateView
     review_status: Optional[str] = None
@@ -143,7 +152,12 @@ def to_candidate_view(
         date_resolution_method=item.date_resolution_method.value,
         priority=item.priority,
         confidence=item.confidence,
+        field_confidence=item.field_confidence or {},
         contradiction_note=item.contradiction_note,
+        timeline=item.timeline,
+        current_state=item.current_state,
+        was_renegotiated=item.was_renegotiated,
+        human_confirmed=item.human_confirmed,
         evidence=[q.model_dump() for q in item.evidence_quotes],
         gate=GateView(eligible=gate.eligible, reasons=gate.reasons),
         review_status=review_status,

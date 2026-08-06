@@ -63,3 +63,51 @@ def compute_confidence(
         + date * WEIGHTS["date"]
     )
     return round(min(max(score, 0.0), 1.0), 3)
+
+
+# ---------------------------------------------------------------------------
+# Per-field confidence
+# ---------------------------------------------------------------------------
+
+
+def compute_field_confidence(
+    *,
+    extraction_confidence: float,
+    owner_method: OwnerResolutionMethod,
+    date_method: DateResolutionMethod,
+    date_was_claimed: bool,
+    state_settled: bool,
+    human_confirmed: bool = False,
+) -> "FieldConfidence":
+    """Score each field separately.
+
+    A single blended number tells a reviewer something is wrong but not
+    what to fix. Splitting it lets the gate say "the owner is the weak
+    part", which is the difference between an actionable message and a
+    shrug.
+
+    ``state`` scores how settled the commitment is: a thread still sitting
+    at `proposed` or `reassigned` is genuinely less certain than one where
+    the owner has said yes to the current terms, and that is information
+    the blend was previously throwing away.
+    """
+    from app.domain.commitment import FieldConfidence
+
+    text = 1.0 if human_confirmed else min(max(extraction_confidence, 0.0), 1.0)
+
+    owner = {
+        OwnerResolutionMethod.exact_match: 1.0,
+        OwnerResolutionMethod.fuzzy_match: 0.8,
+        OwnerResolutionMethod.unresolved: 0.0,
+    }.get(owner_method, 0.0)
+
+    if not date_was_claimed:
+        date = 1.0  # nothing claimed, nothing to get wrong
+    else:
+        date = 1.0 if date_method != DateResolutionMethod.unresolved else 0.0
+
+    state = 1.0 if (state_settled or human_confirmed) else 0.4
+
+    return FieldConfidence(
+        text=round(text, 3), owner=round(owner, 3), date=round(date, 3), state=round(state, 3)
+    )

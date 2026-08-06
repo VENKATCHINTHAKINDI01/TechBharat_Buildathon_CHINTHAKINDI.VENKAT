@@ -6,11 +6,68 @@ Cohort #2 Buildathon, Use Case B (*Agentic AI Meeting Assistant*).
 > The LLM may interpret the meeting.
 > **Deterministic code decides whether an external action is allowed.**
 
+Meet **Naina**, the assistant who sits in the call. She listens, tracks
+every commitment as it is made, handed over, delayed, disputed or dropped,
+and drafts the follow-ups. She does not create any of them. That last part
+is the product.
+
 Most meeting tools summarize. Nexvi.Meets decides what is actually a
 *commitment* — telling a real one apart from a suggestion, a dispute, a
 rejection, or something that got cancelled twenty minutes later — resolves
 who owns it and by when, and takes real action **only** after a human
 approves the exact payload.
+
+---
+
+## What a commitment actually looks like
+
+Meeting tools tend to extract a task once and present it as settled fact.
+Real meetings are messier:
+
+```
+00:14  Arjun   Rohit, can you finish the API migration by Friday?
+00:22  Rohit   Yes, I'll have it done by Friday.
+00:31  Rohit   Actually I'm swamped — Meera, could you take it?
+00:38  Meera   Sure, I can do it. But Thursday, not Friday.
+```
+
+A summarizer reports *"Rohit will finish the API migration by Friday."*
+Every word of that is wrong by the end of the meeting.
+
+Nexvi.Meets models a commitment as a **thread of events**, each carrying
+the verbatim line that caused it:
+
+| At | State | Who | Line |
+|---|---|---|---|
+| 00:14 | Proposed | Arjun | "Rohit, can you finish the API migration by Friday?" |
+| 00:22 | Accepted | Rohit | "Yes, I'll have it done by Friday." |
+| 00:31 | Reassigned | Rohit | "Actually I'm swamped — Meera, could you take it?" |
+| 00:38 | Accepted | Meera | "Sure, I can do it. But Thursday, not Friday." |
+
+The current owner, the current date and the classification the safety gate
+reads are all **derived** from that thread, so they cannot drift away from
+the evidence.
+
+### The rule that makes it strict
+
+> **Any change to the terms requires fresh acceptance.**
+
+Reassign a task, or move its deadline, and the thread leaves `accepted`
+and waits. Nobody is bound to a commitment they did not make. If Meera
+never answers, the item is not confirmed — it is a suggestion with an
+unresolved owner, and the gate blocks it. That is stricter than most tools
+and it is deliberate: the product's claim is commitment integrity, and
+letting an acceptance survive changed terms would quietly break it.
+
+Seven states, with an explicit legal-transition map
+([`domain/commitment.py`](backend/app/domain/commitment.py)) — a
+transition outside it is treated as a confused extractor and dropped
+rather than recorded:
+
+`proposed` · `accepted` · `reassigned` · `deadline_changed` · `disputed` ·
+`rejected` · `cancelled`
+
+Only `accepted` maps to a classification the gate will pass.
 
 ---
 
@@ -43,6 +100,12 @@ Three structural properties make that hold, each asserted by a test:
 3. **An extractor cannot grade its own citations.** `drop_unsupported_evidence`
    runs outside the extractor and deletes any quote that isn't a literal
    substring of the segment it names.
+
+**When it blocks, it says what to fix.** Confidence is scored per field —
+wording, owner, date, agreement — so the gate names the weak one
+("weakest: owner at 0.30") instead of printing a composite the reviewer
+has to interpret. The reviewer opens Edit, sets that field, and the gate
+re-evaluates the corrected values.
 
 ---
 
@@ -164,6 +227,33 @@ destroyed every citation the gate depends on.
 Join your Meet/Zoom call, open Nexvi.Meets, and hit **Start capturing**.
 Commitments appear on screen while people are still talking.
 
+**Naina rides along in a floating window.** On Chrome and Edge she opens
+in a real Document Picture-in-Picture window, so she stays on top of the
+meeting rather than behind it; elsewhere she falls back to a draggable
+in-page panel and says so. She shows the running transcript, the
+commitments found so far, which of them the gate would pass — and the
+recording controls.
+
+| Control | What it actually does |
+|---|---|
+| **Pause** | Stops both recorders and disables the media tracks, so the browser's recording indicator goes out. Nothing is captured, buffered or transcribed. |
+| **Resume** | Restarts capture and writes a visible gap marker into the transcript. |
+| **End** | Stops capture, runs diarization, and generates the end-of-meeting report. |
+
+Pause means *stopped*, not *held quietly*. Someone pauses to take a call
+or say something off the record; capturing it anyway would be the worst
+thing this product could do. The in-flight chunk is discarded rather than
+flushed, for the same reason — it contains the moment they reached for the
+button. Both pause and resume are written to the audit log, so "what was
+captured while we were paused?" is a checkable question rather than one
+answered on trust.
+
+Resume leaves a marker (*"— recording paused · nothing was captured —"*)
+rather than letting the transcript jump silently, because a seamless gap
+looks like the tool missed something. The marker is stored but **excluded
+from extraction**: feeding it back in would let Naina cite her own words
+as evidence for a commitment.
+
 **Two tracks, captured in the browser:**
 
 | Track | Source | Attribution |
@@ -220,7 +310,8 @@ backend/app/
   adapters/   repositories · trackers · calendar · memory  (real | in-memory)
   api/        routes, DTOs, dependency wiring
 backend/tests/  unit/ + integration/
-frontend/src/   React UI: review, evidence drawer, agent trace, live panel
+frontend/src/   React UI: review, evidence drawer, agent trace, Naina's
+                live panel, commitment timelines, report and history
 tests/fixtures/ transcript corpus + labels.json (evaluation dataset)
 docs/           product, architecture, data contracts, acceptance tests, demo
 ```
@@ -234,7 +325,7 @@ bash init.sh              # health checks + full verification
 bash scripts/verify.sh    # tests, schema, docs, safety boundary, frontend build
 ```
 
-**353 tests pass**, with no network access and no credentials required.
+**479 tests pass**, with no network access and no credentials required.
 `verify.sh` additionally proves structurally that extraction and the agents
 cannot import a side-effecting adapter, that only `approval.py` invokes a
 side-effecting tool, and that `check_gate`'s signature hasn't drifted.
@@ -273,16 +364,21 @@ why Groq is primary when a key is present.
 ## Known limitations
 
 - **No live run against real Mongo / Groq / GitHub / Calendar has been
-  performed.** All 353 tests use in-memory adapters and a stubbed Groq
+  performed.** All 479 tests use in-memory adapters and a stubbed Groq
   client. The real adapters are written and typed but unverified in the
   wild. **Do this before demoing.**
+- **Only the deterministic extractor emits commitment timelines.** The
+  Groq extractor returns a single state per item, so on the Groq path the
+  timeline view is empty and the state engine adds nothing. The engine,
+  the gate rule and the UI are all real; the LLM prompt has not yet been
+  taught to produce the events that feed them.
+- The pause/resume recorder lifecycle is covered by websocket tests but
+  has never been exercised by an actual browser.
 - The evaluation numbers above are on self-labelled fixtures, not a gold
   transcript. The Groq path's accuracy is unmeasured.
 - The deterministic extractor is pattern-based over a small fixture set,
   not general NLU. It is a fallback and a reproducible baseline.
 - Reminder times are computed and stored as *intent*; no background
   scheduler fires them. The Calendar invite is the real notification.
-- Audio transcription and diarization are not implemented (both explicitly
-  permitted by the brief's FAQ — speaker labels must be in the transcript).
 - Latency against "under 3 minutes for a 45-minute meeting" is unmeasured.
 - The frontend has no automated tests; verified by build and manual use.

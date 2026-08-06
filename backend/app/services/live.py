@@ -131,6 +131,14 @@ class LiveSession:
         self.consent_acknowledged = False
         self.consent_note: Optional[str] = None
 
+        # Paused means the browser has stopped its recorders, so no audio
+        # is captured at all -- not buffered-and-held. If someone pauses to
+        # discuss something private, "we kept recording and transcribed it
+        # later" would be a betrayal of what the button appears to do.
+        self.paused = False
+        self.paused_at_ms: Optional[int] = None
+        self.pause_count = 0
+
         self.segments: list[LiveSegment] = []
         self._window: deque[LiveSegment] = deque(maxlen=settings.live_window_seconds)
         self._since_last_pass = 0
@@ -151,6 +159,42 @@ class LiveSession:
     def acknowledge_consent(self, note: Optional[str] = None) -> None:
         self.consent_acknowledged = True
         self.consent_note = note or "Participants informed that the meeting is being captured."
+
+    # --- recording control ----------------------------------------------
+
+    def pause(self) -> None:
+        if self.paused:
+            return
+        self.paused = True
+        self.pause_count += 1
+        self.paused_at_ms = self.segments[-1].end_ms if self.segments else 0
+
+    def resume(self) -> LiveSegment | None:
+        """Resume, leaving a visible gap in the transcript.
+
+        The marker matters: a transcript that silently jumps four minutes
+        looks like the tool missed something. Saying "paused, nothing
+        captured" makes the record honest about its own gaps.
+        """
+        if not self.paused:
+            return None
+        self.paused = False
+        if self.paused_at_ms is None:
+            return None
+
+        marker = LiveSegment(
+            segment_id=f"{self.meeting_id}-P{self.pause_count:02d}",
+            track="marker",
+            speaker="Naina",
+            text="— recording paused · nothing was captured —",
+            start_ms=self.paused_at_ms,
+            end_ms=self.paused_at_ms,
+            engine="marker",
+            speaker_confirmed=True,
+        )
+        self.segments.append(marker)
+        self.paused_at_ms = None
+        return marker
 
     def _require_consent(self) -> None:
         if not self.consent_acknowledged:
@@ -181,6 +225,10 @@ class LiveSession:
         six lost seconds are recoverable, invented words are not.
         """
         self._require_consent()
+        if self.paused:
+            # A late chunk from a recorder that had not stopped yet.
+            # Dropping it is the whole point of pause.
+            return []
 
         if chunk.track == "remote" and self.settings.live_keep_audio:
             self._buffer_remote(chunk)
@@ -380,7 +428,11 @@ class LiveSession:
         self.items_by_key.clear()
         self.gate_decisions.clear()
 
-        full = [s.to_transcript_segment() for s in self.segments]
+        # Markers are Naina's own words about the recording, not anyone's
+        # speech. They belong in the stored transcript -- that is the
+        # whole point of them -- but feeding them to the extractor would
+        # let the tool quote itself as evidence for a commitment.
+        full = [s.to_transcript_segment() for s in self.segments if s.track != "marker"]
         try:
             candidates = self.extractor.extract(full, self.meeting_id)
         except ExtractionError:
@@ -406,12 +458,18 @@ class LiveSession:
     def unattributed_count(self) -> int:
         return sum(1 for s in self.segments if s.speaker == REMOTE_PLACEHOLDER)
 
+    @property
+    def spoken_segments(self) -> list[LiveSegment]:
+        """Actual speech, excluding Naina's own recording markers."""
+        return [s for s in self.segments if s.track != "marker"]
+
     def snapshot(self, include_segments: int = 40) -> dict[str, Any]:
         return {
             "meeting_id": self.meeting_id,
             "segment_count": len(self.segments),
             "segments": [s.as_dict() for s in self.segments[-include_segments:]],
             "unattributed": self.unattributed_count,
+            "paused": self.paused,
             "participants": [
                 {"participant_id": p.participant_id, "name": p.name} for p in self.participants
             ],
@@ -432,6 +490,13 @@ class LiveSession:
                     "due_date": item.due_date.isoformat() if item.due_date else None,
                     "priority": item.priority.value,
                     "confidence": item.confidence,
+                    "field_confidence": item.field_confidence or {},
+                    # The live panel shows the current state rather than
+                    # just the text, so a task that has been handed on
+                    # mid-meeting reads as unsettled while it still is.
+                    "current_state": item.current_state,
+                    "was_renegotiated": item.was_renegotiated,
+                    "timeline": item.timeline,
                     "evidence": [q.model_dump() for q in item.evidence_quotes],
                     "gate": {
                         "eligible": self.gate_decisions[item.candidate_id].eligible,

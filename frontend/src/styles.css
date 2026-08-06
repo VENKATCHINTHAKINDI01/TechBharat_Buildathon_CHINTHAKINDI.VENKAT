@@ -153,6 +153,80 @@ a { color: var(--accent); }
 .tiny { font-size: 11px; }
 button.tiny { padding: 3px 8px; font-size: 11px; }
 
+/* Naina — the assistant's mark. Present but quiet; she is a participant
+   in the room, not a mascot demanding attention. */
+.naina-dot {
+  display: grid; place-items: center;
+  width: 24px; height: 24px; flex: none;
+  border-radius: 50%; font-size: 11px; font-weight: 800; letter-spacing: 0.2px;
+  color: #fff;
+  background: linear-gradient(140deg, var(--accent), color-mix(in srgb, var(--accent) 45%, var(--ok)));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.naina-dot.lg { width: 34px; height: 34px; font-size: 14px; }
+/* The pulse says "listening". It stops when recording stops, so the
+   absence of motion is itself the paused signal. */
+.naina-dot.live { animation: naina-pulse 2.4s ease-in-out infinite; }
+@keyframes naina-pulse {
+  0%, 100% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
+  50% { box-shadow: 0 0 0 7px color-mix(in srgb, var(--accent) 6%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .naina-dot.live { animation: none; }
+}
+
+.floating-controls { display: flex; align-items: center; gap: 6px; }
+.floating-paused {
+  font-size: 11px; line-height: 1.4; padding: 6px 8px; border-radius: 6px;
+  color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent);
+}
+.floating-marker {
+  text-align: center; color: var(--muted); font-style: italic;
+  padding: 3px 0; border-top: 1px dashed var(--border); border-bottom: 1px dashed var(--border);
+}
+
+/* ---------- commitment timeline ---------- */
+/* A commitment is a sequence of things people said, so it is drawn as a
+   sequence: one rail, one node per state change, the quote beside it. */
+.timeline { list-style: none; margin: 10px 0 0; padding: 0 0 0 4px; }
+.timeline li {
+  position: relative; padding: 0 0 14px 20px;
+  border-left: 2px solid var(--border);
+}
+.timeline li:last-child { border-left-color: transparent; padding-bottom: 0; }
+.timeline li::before {
+  content: ""; position: absolute; left: -6px; top: 3px;
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--panel); border: 2px solid var(--muted);
+}
+.timeline li.s-accepted::before { border-color: var(--ok); background: var(--ok); }
+.timeline li.s-proposed::before { border-color: var(--accent); }
+.timeline li.s-reassigned::before,
+.timeline li.s-deadline_changed::before { border-color: var(--warn); background: var(--warn); }
+.timeline li.s-disputed::before,
+.timeline li.s-rejected::before,
+.timeline li.s-cancelled::before { border-color: var(--bad); background: var(--bad); }
+.timeline .tl-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.timeline .tl-label { font-weight: 700; font-size: 12px; }
+.timeline .tl-quote {
+  margin-top: 3px; font-size: 12px; color: var(--muted);
+  font-style: italic; line-height: 1.45;
+}
+
+/* ---------- per-field confidence ---------- */
+.fieldconf { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+.fieldconf .fc { flex: 1 1 90px; min-width: 90px; }
+.fieldconf .fc-label {
+  display: flex; justify-content: space-between; font-size: 11px; color: var(--muted);
+  margin-bottom: 3px;
+}
+.fieldconf .fc-bar { height: 4px; border-radius: 3px; background: var(--border); overflow: hidden; }
+.fieldconf .fc-fill { height: 100%; border-radius: 3px; background: var(--ok); }
+.fieldconf .fc.weak .fc-fill { background: var(--bad); }
+.fieldconf .fc.weak .fc-label { color: var(--bad); }
+
 /* ---------- meeting history ---------- */
 .meeting-row {
   display: flex; align-items: center; gap: 12px; flex-wrap: wrap;

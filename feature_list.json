@@ -339,6 +339,44 @@
       ]
     },
     {
+      "id": "F035",
+      "priority": "P0",
+      "name": "Commitment state engine with evidence timelines",
+      "status": "done",
+      "depends_on": [
+        "F006",
+        "F010"
+      ]
+    },
+    {
+      "id": "F036",
+      "priority": "P1",
+      "name": "Per-field confidence (text, owner, date, agreement)",
+      "status": "done",
+      "depends_on": [
+        "F035"
+      ]
+    },
+    {
+      "id": "F037",
+      "priority": "P1",
+      "name": "Naina assistant persona across UI, transcript and reports",
+      "status": "done",
+      "depends_on": [
+        "F034"
+      ]
+    },
+    {
+      "id": "F038",
+      "priority": "P1",
+      "name": "Pause and resume recording, with an honest transcript gap",
+      "status": "done",
+      "depends_on": [
+        "F028",
+        "F037"
+      ]
+    },
+    {
       "id": "F019",
       "priority": "P0",
       "name": "Evaluation report and demo freeze",

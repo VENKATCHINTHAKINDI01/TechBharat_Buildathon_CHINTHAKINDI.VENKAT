@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import re
 
+from app.domain.commitment import CommitmentEvent, CommitmentState, CommitmentThread
 from app.domain.models import CandidateKind, Classification, EvidenceQuote, Priority, TranscriptSegment, ValidatedItem
 
 REQUEST_LINE_RE = re.compile(r"^([A-Za-z][A-Za-z ]{0,30}),\s*(.+)$")
@@ -133,12 +134,32 @@ def _extract_redirect_name(text: str) -> str | None:
 def _resolve_request_thread(
     segments: list[TranscriptSegment], ask_idx: int, addressee: str, ask_text: str, meeting_id: str, counter: int
 ) -> tuple[ValidatedItem, int]:
+    """Walk a request thread, recording each turn as a state event.
+
+    Previously this collapsed the whole exchange into one candidate with a
+    free-text note, which lost the sequence -- and the sequence is what
+    tells you whether a commitment is real. Now every turn that changes
+    the commitment's standing becomes an event carrying the line that
+    caused it.
+    """
+    thread = CommitmentThread(thread_id=f"{meeting_id}-t{counter:03d}", meeting_id=meeting_id)
     evidence = [_quote(segments[ask_idx])]
     raw_date = _find_date_phrase(ask_text)
     owner = addressee
-    classification: str | None = None
-    contradiction_note: str | None = None
     last_consumed = ask_idx
+
+    thread.add(
+        CommitmentEvent(
+            state=CommitmentState.proposed,
+            at_ms=segments[ask_idx].start_ms or 0,
+            segment_id=segments[ask_idx].segment_id,
+            quote=segments[ask_idx].text,
+            actor=segments[ask_idx].speaker,
+            owner_mention=owner,
+            date_mention=raw_date,
+        ),
+        strict=False,
+    )
 
     j = ask_idx + 1
     while j < len(segments) and j <= ask_idx + 6:
@@ -152,13 +173,34 @@ def _resolve_request_thread(
             last_consumed = j
             if new_name:
                 owner = new_name
+            thread.add(
+                CommitmentEvent(
+                    state=CommitmentState.reassigned,
+                    at_ms=seg.start_ms or 0,
+                    segment_id=seg.segment_id,
+                    quote=seg.text,
+                    actor=seg.speaker,
+                    owner_mention=owner,
+                    note=f"handed to {owner}",
+                ),
+                strict=False,
+            )
             j += 1
             continue
 
         if speaks_as_owner and any(n in text_l for n in NEGATIVE_MARKERS):
-            classification = "rejected"
             evidence.append(_quote(seg))
             last_consumed = j
+            thread.add(
+                CommitmentEvent(
+                    state=CommitmentState.rejected,
+                    at_ms=seg.start_ms or 0,
+                    segment_id=seg.segment_id,
+                    quote=seg.text,
+                    actor=seg.speaker,
+                ),
+                strict=False,
+            )
             break
 
         if speaks_as_owner and any(a in text_l for a in AFFIRM_MARKERS):
@@ -167,22 +209,53 @@ def _resolve_request_thread(
             found_date = _find_date_phrase(seg.text)
             if found_date:
                 raw_date = found_date
-            classification = "confirmed"
+            thread.add(
+                CommitmentEvent(
+                    state=CommitmentState.accepted,
+                    at_ms=seg.start_ms or 0,
+                    segment_id=seg.segment_id,
+                    quote=seg.text,
+                    actor=seg.speaker,
+                    owner_mention=owner,
+                    date_mention=found_date,
+                ),
+                strict=False,
+            )
 
             k = j + 1
             while k < len(segments) and k <= j + 4:
                 seg2 = segments[k]
                 t2 = seg2.text.lower()
                 if any(c in t2 for c in CANCEL_MARKERS):
-                    classification = "cancelled"
-                    contradiction_note = seg2.text
                     evidence.append(_quote(seg2))
                     last_consumed = k
+                    thread.add(
+                        CommitmentEvent(
+                            state=CommitmentState.cancelled,
+                            at_ms=seg2.start_ms or 0,
+                            segment_id=seg2.segment_id,
+                            quote=seg2.text,
+                            actor=seg2.speaker,
+                        ),
+                        strict=False,
+                    )
                     break
                 if any(c in t2 for c in CORRECTION_MARKERS):
                     new_date = _find_date_phrase(seg2.text)
                     evidence.append(_quote(seg2))
                     last_consumed = k
+                    thread.add(
+                        CommitmentEvent(
+                            state=CommitmentState.deadline_changed,
+                            at_ms=seg2.start_ms or 0,
+                            segment_id=seg2.segment_id,
+                            quote=seg2.text,
+                            actor=seg2.speaker,
+                            date_mention=new_date,
+                            note="deadline moved",
+                        ),
+                        strict=False,
+                    )
                     if k + 1 < len(segments):
                         seg3 = segments[k + 1]
                         if seg3.speaker.strip().casefold() == owner.strip().casefold() and any(
@@ -193,15 +266,28 @@ def _resolve_request_thread(
                             newer_date = _find_date_phrase(seg3.text) or new_date
                             if newer_date:
                                 raw_date = newer_date
+                            # Re-acceptance on the new terms. Without this
+                            # the thread would sit at deadline_changed and
+                            # never become approvable, which would be wrong
+                            # -- they did agree again.
+                            thread.add(
+                                CommitmentEvent(
+                                    state=CommitmentState.accepted,
+                                    at_ms=seg3.start_ms or 0,
+                                    segment_id=seg3.segment_id,
+                                    quote=seg3.text,
+                                    actor=seg3.speaker,
+                                    date_mention=newer_date,
+                                ),
+                                strict=False,
+                            )
                     break
                 k += 1
             break
 
         j += 1
 
-    if classification is None:
-        classification = "suggestion"  # asked but never clearly affirmed or declined
-
+    classification = thread.classification
     candidate_id = f"{meeting_id}-c{counter:03d}"
     item = ValidatedItem(
         candidate_id=candidate_id,
@@ -214,7 +300,14 @@ def _resolve_request_thread(
         priority=_derive_priority(CandidateKind.action_item, classification),
         confidence=0.9 if classification == "confirmed" else 0.55,
         classification=Classification(classification),
-        contradiction_note=contradiction_note,
+        contradiction_note=next(
+            (e.quote for e in reversed(thread.events)
+             if e.state in (CommitmentState.cancelled, CommitmentState.disputed)),
+            None,
+        ),
+        timeline=thread.timeline(),
+        current_state=thread.current_state.value if thread.current_state else None,
+        was_renegotiated=thread.was_renegotiated,
     )
     return item, last_consumed
 

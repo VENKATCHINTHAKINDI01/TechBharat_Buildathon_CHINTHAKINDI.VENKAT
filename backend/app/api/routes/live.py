@@ -302,6 +302,28 @@ async def live_session(
                 )
                 continue
 
+            if kind in ("pause", "resume"):
+                if kind == "pause":
+                    session.pause()
+                    marker = None
+                else:
+                    marker = session.resume()
+
+                if audit:
+                    await audit.record(
+                        AuditStage.live,
+                        {
+                            "event": f"recording_{kind}d",
+                            "at_ms": session.paused_at_ms,
+                            "pause_count": session.pause_count,
+                        },
+                    )
+                payload = {"type": "recording", "paused": session.paused}
+                if marker is not None:
+                    payload["segments"] = [marker.as_dict()]
+                await websocket.send_json(payload)
+                continue
+
             if kind == "flush":
                 await session.process(force=True)
                 await websocket.send_json({"type": "snapshot", **session.snapshot()})

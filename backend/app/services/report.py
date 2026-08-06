@@ -61,6 +61,8 @@ def _to_report_item(
         review_status=review_status,
         evidence=item.evidence_quotes,
         actions=actions,
+        timeline=item.timeline,
+        was_renegotiated=item.was_renegotiated,
     )
 
 
@@ -301,6 +303,15 @@ def render_markdown(report: MeetingReport) -> str:
             )
             if not item.gate_eligible and item.gate_reasons:
                 lines.append(f"- **Blocked because:** {'; '.join(item.gate_reasons)}")
+            # Only worth the space when the terms actually moved. For a
+            # task that was stated once and stood, the timeline says
+            # nothing the line above has not already said.
+            if item.was_renegotiated and len(item.timeline) > 1:
+                lines.append("- **This changed during the meeting:**")
+                for event in item.timeline:
+                    who = f" — {event['actor']}" if event.get("actor") else ""
+                    quote = f' “{event["quote"]}”' if event.get("quote") else ""
+                    lines.append(f"  - `{event['at']}` **{event['label']}**{who}:{quote}")
             for action in item.actions:
                 target = f" — {action.url}" if action.url else ""
                 lines.append(f"- **{action.effect}:** {action.status}{target}")

@@ -42,8 +42,16 @@ def check_gate(item: ResolvedItem, confidence_threshold: float) -> GateDecision:
 
     # Rule 2: confidence below threshold -> manual review.
     if item.confidence < confidence_threshold:
+        # Name the weakest field. "confidence 0.62" tells a reviewer
+        # something is wrong; "the owner is the weak part" tells them
+        # what to fix.
+        weakest = ""
+        if item.field_confidence:
+            field, score = min(item.field_confidence.items(), key=lambda kv: kv[1])
+            weakest = f" (weakest: {field} at {score:.2f})"
         reasons.append(
-            f"confidence {item.confidence:.2f} below threshold {confidence_threshold:.2f}: manual review required"
+            f"confidence {item.confidence:.2f} below threshold "
+            f"{confidence_threshold:.2f}{weakest}: manual review required"
         )
 
     # Rule 3: contradiction detected -> block creation.
@@ -61,6 +69,16 @@ def check_gate(item: ResolvedItem, confidence_threshold: float) -> GateDecision:
     # Rule 4: no transcript evidence -> block creation.
     if not item.evidence_quotes:
         reasons.append("no transcript evidence: block creation")
+
+    # Renegotiation rule: if the terms moved and nobody agreed to the new
+    # ones, nobody is on the hook. The state engine already reflects this
+    # in the classification, but saying it explicitly gives the reviewer
+    # the actual reason rather than a bare "not confirmed".
+    if item.current_state in ("reassigned", "deadline_changed"):
+        reasons.append(
+            f"terms changed ({item.current_state.replace('_', ' ')}) and were never "
+            "re-agreed: nobody has accepted the current version"
+        )
 
     # Rule 5: rejected or cancelled -> do not create.
     if item.classification in (Classification.rejected, Classification.cancelled):

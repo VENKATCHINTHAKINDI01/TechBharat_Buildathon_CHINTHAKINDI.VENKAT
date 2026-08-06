@@ -47,12 +47,14 @@ export default function App() {
   return (
     <div className="app">
       <header className="masthead">
+        <span className="naina-dot lg" aria-hidden="true">N</span>
         <h1>Nexvi.Meets</h1>
         <span className="pill accent">commitment integrity, not summarization</span>
       </header>
       <p className="tagline">
-        The model interprets the meeting. Deterministic code decides whether anything leaves this
-        machine.
+        <strong>Naina</strong> sits in your meetings and tracks every commitment as it is made,
+        handed over, delayed or dropped. The model interprets the meeting; deterministic code
+        decides whether anything leaves this machine.
       </p>
 
       <div className="status-bar">

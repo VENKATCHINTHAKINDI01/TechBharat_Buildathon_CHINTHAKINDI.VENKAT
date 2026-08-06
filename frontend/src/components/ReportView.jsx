@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { getReport, reportMarkdownUrl } from "../api/client";
+import CommitmentTimeline from "./CommitmentTimeline";
 
 /**
  * The end-of-meeting report.
@@ -117,7 +118,14 @@ export default function ReportView({ meetingId, onBack, onOpenReview }) {
                 <span className="pill">{item.due_date || "no date"}</span>
                 <span className="pill">{item.priority}</span>
                 <span className="pill">conf {item.confidence?.toFixed(2)}</span>
+                {item.was_renegotiated && <span className="pill warn">renegotiated</span>}
               </div>
+
+              {item.was_renegotiated && item.timeline?.length > 1 && (
+                <div className="drawer">
+                  <CommitmentTimeline timeline={item.timeline} renegotiated />
+                </div>
+              )}
 
               {!item.gate_eligible && item.gate_reasons?.length > 0 && (
                 <div className="reasons">

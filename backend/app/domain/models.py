@@ -141,6 +141,12 @@ class CandidateItem(BaseModel):
     raw_date_mention: Optional[str] = None
     priority: Priority = Priority.medium
     confidence: float = Field(ge=0.0, le=1.0)
+    # The life of this commitment: proposed -> accepted -> reassigned -> ...
+    # Each event carries the verbatim line that caused it, so the timeline
+    # is auditable rather than a summary. See domain/commitment.py.
+    timeline: list[dict] = Field(default_factory=list)
+    current_state: Optional[str] = None
+    was_renegotiated: bool = False
 
     @field_validator("evidence_quotes")
     @classmethod
@@ -173,6 +179,9 @@ class ResolvedItem(ValidatedItem):
     """
 
     extraction_confidence: Optional[float] = None
+    # Confidence per field, so the gate can name the weak part instead of
+    # reporting one blended number a reviewer cannot act on.
+    field_confidence: dict[str, float] = Field(default_factory=dict)
     # True once a reviewer explicitly vouched for this item -- corrected
     # its classification, or confirmed a vague one really was a commitment.
     # A person who was in the room outranks the model's guess, so this
@@ -371,6 +380,11 @@ class ReportItem(BaseModel):
     review_status: Optional[str] = None
     evidence: list[EvidenceQuote] = Field(default_factory=list)
     actions: list[ActionTaken] = Field(default_factory=list)
+    # How the commitment moved during the meeting. A reader of the report
+    # a week later has no other way to know that "Meera owns this" was the
+    # third answer to that question rather than the first.
+    timeline: list[dict] = Field(default_factory=list)
+    was_renegotiated: bool = False
 
     @property
     def was_actioned(self) -> bool:

@@ -38,6 +38,7 @@ export default function LivePanel({ onFinished }) {
   const [engines, setEngines] = useState({});
   const [tracks, setTracks] = useState({ mic: false, remote: false });
   const [showBar, setShowBar] = useState(true);
+  const [paused, setPaused] = useState(false);
 
   const browser = tabAudioSupport();
   const socketRef = useRef(null);
@@ -158,6 +159,11 @@ export default function LivePanel({ onFinished }) {
         case "warnings":
           setWarnings(msg.warnings || []);
           break;
+        case "recording":
+          // The server is authoritative: if it says paused, show paused.
+          setPaused(Boolean(msg.paused));
+          if (msg.segments) setSegments((prev) => [...prev, ...msg.segments]);
+          break;
         case "finalizing":
           setPhase("finalizing");
           setStatus(msg.step);
@@ -184,8 +190,29 @@ export default function LivePanel({ onFinished }) {
     socket.onclose = () => stopRecorders();
   }
 
+  /**
+   * Pause stops capture on both sides.
+   *
+   * Recorders stop first, then the server is told — that ordering means
+   * any chunk still in flight arrives before the server flips to paused
+   * and gets dropped there. Doing it the other way round would leave a
+   * window where audio recorded after the click still got transcribed.
+   */
+  function pauseRecording() {
+    recordersRef.current.forEach((r) => r.pause());
+    setPaused(true);
+    send({ type: "pause" });
+  }
+
+  function resumeRecording() {
+    recordersRef.current.forEach((r) => r.resume());
+    setPaused(false);
+    send({ type: "resume" });
+  }
+
   function endMeeting() {
     stopRecorders();
+    setPaused(false);
     setPhase("finalizing");
     setStatus("wrapping up");
     send({ type: "end" });
@@ -197,8 +224,17 @@ export default function LivePanel({ onFinished }) {
   if (phase === "setup") {
     return (
       <section className="panel">
-        <h2>Live meeting</h2>
-        {error && <div className="error">{error}</div>}
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 4 }}>
+          <span className="naina-dot lg" aria-hidden="true">N</span>
+          <div>
+            <h2 style={{ margin: 0 }}>Start a meeting with Naina</h2>
+            <p className="muted" style={{ margin: "2px 0 0" }}>
+              She listens, tracks every commitment as it changes, and drafts the follow-ups —
+              but she never creates anything until you say so.
+            </p>
+          </div>
+        </div>
+        {error && <div className="error" style={{ marginTop: 16 }}>{error}</div>}
 
         <div className="row">
           <div className="field">
@@ -295,6 +331,9 @@ export default function LivePanel({ onFinished }) {
           candidates={candidates}
           tracks={tracks}
           meetingId={meetingId}
+          paused={paused}
+          onPause={pauseRecording}
+          onResume={resumeRecording}
           onEnd={endMeeting}
           onClose={() => setShowBar(false)}
         />
@@ -304,7 +343,8 @@ export default function LivePanel({ onFinished }) {
       <h2>{phase === "ended" ? "Meeting ended" : "Live meeting"}</h2>
 
       <div className="meta">
-        {phase === "live" && <span className="pill ok">● recording</span>}
+        {phase === "live" && paused && <span className="pill warn">‖ paused</span>}
+        {phase === "live" && !paused && <span className="pill ok">● recording</span>}
         {phase === "finalizing" && <span className="pill warn">finalizing…</span>}
         {phase === "ended" && <span className="pill accent">done</span>}
         <span className="pill">{meetingId}</span>
@@ -332,17 +372,35 @@ export default function LivePanel({ onFinished }) {
       )}
 
       {phase === "live" && (
-        <div className="actions">
-          <button onClick={() => send({ type: "flush" })}>Extract now</button>
-          {!showBar && (
-            <button className="ghost" onClick={() => setShowBar(true)}>
-              Show floating bar
-            </button>
+        <>
+          {paused && (
+            <div className="notice" style={{ marginTop: 12 }}>
+              <strong>Recording paused.</strong> Nothing is being captured or transcribed — the
+              microphone and tab audio are both off. The transcript will show a gap here rather
+              than pretending the silence was silence.
+            </div>
           )}
-          <button className="danger" onClick={endMeeting}>
-            End meeting
-          </button>
-        </div>
+          <div className="actions">
+            {paused ? (
+              <button className="primary" onClick={resumeRecording}>
+                ● Resume recording
+              </button>
+            ) : (
+              <button onClick={pauseRecording}>⏸ Pause recording</button>
+            )}
+            <button onClick={() => send({ type: "flush" })} disabled={paused}>
+              Extract now
+            </button>
+            {!showBar && (
+              <button className="ghost" onClick={() => setShowBar(true)}>
+                Show Naina
+              </button>
+            )}
+            <button className="danger" onClick={endMeeting}>
+              ■ End meeting
+            </button>
+          </div>
+        </>
       )}
 
       {phase === "ended" && meetingId && (
@@ -361,6 +419,11 @@ export default function LivePanel({ onFinished }) {
         )}
         <div ref={feedRef} style={{ maxHeight: 300, overflowY: "auto", marginTop: 8 }}>
           {segments.map((s) => (
+            s.track === "marker" ? (
+              <div className="floating-marker tiny" key={s.segment_id} style={{ margin: "10px 0" }}>
+                {s.text}
+              </div>
+            ) : (
             <blockquote className="evidence" key={s.segment_id}>
               <strong>{s.speaker}</strong>
               {s.speaker_confirmed && <span className="pill ok" style={{ marginLeft: 6 }}>tagged</span>}
@@ -390,12 +453,13 @@ export default function LivePanel({ onFinished }) {
                 </div>
               )}
             </blockquote>
+            )
           ))}
         </div>
       </div>
 
       {/* manual entry — a demo should never hinge on venue audio */}
-      {phase === "live" && (
+      {phase === "live" && !paused && (
         <form
           className="row"
           style={{ marginTop: 12 }}
@@ -455,7 +519,8 @@ export default function LivePanel({ onFinished }) {
       )}
 
       <p className="muted" style={{ marginTop: 14 }}>
-        Live mode surfaces commitments only. Nothing is created until you approve it in review.
+        Naina surfaces commitments; she does not act on them. Nothing is created until you
+        approve it in review.
       </p>
       </section>
     </>

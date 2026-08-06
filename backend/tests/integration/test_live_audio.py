@@ -331,3 +331,199 @@ def test_the_session_does_not_continue_after_a_storage_failure(client, repositor
 
     assert follow_up["type"] == "error"
     assert "start" in follow_up["error"].lower()
+
+
+# --- pause and resume ------------------------------------------------------
+#
+# Pause has to mean "we stopped listening", not "we kept listening and
+# will show it later". Someone pauses to take a private call or say
+# something off the record; capturing that anyway would be the single
+# worst thing this product could do.
+
+
+def test_pausing_stops_audio_from_being_transcribed(client, transcriber):
+    transcriber.queue("mic", "This part is private and must never be transcribed.")
+
+    with client.websocket_connect("/live") as ws:
+        _start(ws)
+        ws.send_json({"type": "pause"})
+        assert ws.receive_json() == {"type": "recording", "paused": True}
+
+        # A chunk from a recorder that had not stopped yet.
+        _audio(ws, "mic", 0)
+
+        ws.send_json({"type": "resume"})
+        resumed = ws.receive_json()
+
+    assert resumed["paused"] is False
+    # The queued line never became a segment: the only thing added is the
+    # gap marker itself.
+    texts = [s["text"] for s in resumed["segments"]]
+    assert not any("private" in t for t in texts)
+
+
+def test_resuming_leaves_an_honest_gap_in_the_transcript(client, transcriber):
+    """A transcript that silently jumps looks like the tool missed
+    something. Saying so is better than a seamless-looking lie."""
+    transcriber.queue("mic", "Before the break.")
+
+    with client.websocket_connect("/live") as ws:
+        _start(ws)
+        _audio(ws, "mic", 0)
+        _drain(ws, "segments")
+
+        ws.send_json({"type": "pause"})
+        ws.receive_json()
+        ws.send_json({"type": "resume"})
+        resumed = ws.receive_json()
+
+    marker = resumed["segments"][0]
+    assert marker["track"] == "marker"
+    assert marker["speaker"] == "Naina"
+    assert "paused" in marker["text"]
+    assert "nothing was captured" in marker["text"]
+
+
+def test_capture_works_again_after_resuming(client, transcriber):
+    transcriber.queue("mic", "Rohit, can you finish the API migration by Friday?")
+
+    with client.websocket_connect("/live") as ws:
+        _start(ws)
+        ws.send_json({"type": "pause"})
+        ws.receive_json()
+        ws.send_json({"type": "resume"})
+        ws.receive_json()
+
+        _audio(ws, "mic", 0)
+        segments = _drain(ws, "segments")["segments"]
+
+    assert "API migration" in segments[0]["text"]
+
+
+def test_pausing_twice_is_harmless(client):
+    with client.websocket_connect("/live") as ws:
+        _start(ws)
+        ws.send_json({"type": "pause"})
+        assert ws.receive_json()["paused"] is True
+        ws.send_json({"type": "pause"})
+        assert ws.receive_json()["paused"] is True
+
+        # And a resume that follows still produces exactly one marker.
+        ws.send_json({"type": "resume"})
+        resumed = ws.receive_json()
+
+    assert resumed["paused"] is False
+    assert len(resumed["segments"]) == 1
+
+
+def test_resuming_without_pausing_does_nothing(client):
+    with client.websocket_connect("/live") as ws:
+        _start(ws)
+        ws.send_json({"type": "resume"})
+        msg = ws.receive_json()
+
+    assert msg["paused"] is False
+    assert "segments" not in msg
+
+
+def test_pauses_are_written_to_the_audit_log(client):
+    """If a participant later asks what was captured while paused, the
+    answer has to be checkable rather than taken on trust."""
+    with client.websocket_connect("/live") as ws:
+        _start(ws)
+        ws.send_json({"type": "pause"})
+        ws.receive_json()
+        ws.send_json({"type": "resume"})
+        ws.receive_json()
+
+    events = client.get("/review/meetings/live-demo/audit").json()
+    kinds = [e["payload"].get("event") for e in events]
+    assert "recording_paused" in kinds
+    assert "recording_resumed" in kinds
+
+
+def test_the_marker_survives_into_the_final_transcript(client, transcriber):
+    transcriber.queue("mic", "Rohit, can you finish the API migration by Friday?")
+
+    with client.websocket_connect("/live") as ws:
+        _start(ws)
+        _audio(ws, "mic", 0)
+        _drain(ws, "segments")
+        ws.send_json({"type": "pause"})
+        ws.receive_json()
+        ws.send_json({"type": "resume"})
+        ws.receive_json()
+        ws.send_json({"type": "end"})
+        _drain(ws, "ended", limit=12)
+
+    transcript = client.get("/meetings/live-demo/transcript").json()
+    texts = [s["text"] for s in transcript["segments"]]
+    assert any("recording paused" in t for t in texts)
+
+
+def test_the_gap_marker_is_never_treated_as_speech(client, transcriber):
+    """Naina's own note about the recording must not become evidence for
+    a commitment, or the tool would be citing itself."""
+    transcriber.queue("mic", "Rohit, can you finish the API migration by Friday?")
+    transcriber.queue("mic", "Yes, I will finish the API migration by Friday.")
+
+    with client.websocket_connect("/live") as ws:
+        _start(ws)
+        _audio(ws, "mic", 0)
+        ws.send_json({"type": "pause"})
+        ws.receive_json()
+        ws.send_json({"type": "resume"})
+        ws.receive_json()
+        _audio(ws, "mic", 1, offset_ms=12000)
+        ws.send_json({"type": "end"})
+        _drain(ws, "ended", limit=12)
+
+    detail = client.get("/meetings/live-demo").json()
+    quotes = [q["quote"] for c in detail["candidates"] for q in c["evidence"]]
+    assert quotes, "the commitment should still have been found"
+    assert not any("recording paused" in q for q in quotes)
+
+
+def test_the_live_panel_sees_the_commitment_state(client):
+    """The floating bar shows state, not just text — a task nobody has
+    agreed to should not read as settled."""
+    with client.websocket_connect("/live") as ws:
+        _start(ws)
+        ws.send_json({
+            "type": "text", "speaker": "Arjun",
+            "text": "Rohit, can you finish the API migration by Friday?",
+        })
+        _drain(ws, "segments")
+        ws.send_json({
+            "type": "text", "speaker": "Rohit",
+            "text": "Yes, I will finish the API migration by Friday.",
+        })
+        snapshot = _drain(ws, "snapshot")
+
+    candidate = snapshot["candidates"][0]
+    assert candidate["current_state"] == "accepted"
+    assert candidate["was_renegotiated"] is False
+    assert [e["state"] for e in candidate["timeline"]] == ["proposed", "accepted"]
+    assert candidate["field_confidence"]["owner"] > 0
+
+
+def test_the_asker_cannot_accept_on_the_owners_behalf(client):
+    """Arjun asking Rohit and then saying "yes, Rohit will do it" is not
+    Rohit agreeing to anything. The thread stays proposed, and the gate
+    treats it as a suggestion rather than a confirmed commitment."""
+    with client.websocket_connect("/live") as ws:
+        _start(ws)
+        ws.send_json({
+            "type": "text", "speaker": "Arjun",
+            "text": "Rohit, can you finish the API migration by Friday?",
+        })
+        _drain(ws, "segments")
+        ws.send_json({
+            "type": "text", "speaker": "Arjun",
+            "text": "Yes, I will finish the API migration by Friday.",
+        })
+        snapshot = _drain(ws, "snapshot")
+
+    candidate = snapshot["candidates"][0]
+    assert candidate["current_state"] == "proposed"
+    assert candidate["classification"] == "suggestion"

@@ -286,6 +286,75 @@ that agents now capture errors into state rather than raising — so the
 upload route needed to translate a captured error into a 422 instead of
 silently returning success.
 
+### 2026-08-05 — Session 8 (commitment state engine, Naina, recording controls)
+
+**F035 commitment state engine.** A commitment is no longer a
+classification extracted once; it is a thread of timestamped events, each
+carrying the verbatim line that caused it. `current_state`,
+`current_owner`, `current_due_date` and the classification the gate reads
+are all *derived* from that thread, so they cannot drift out of sync with
+the evidence.
+
+The rule the engine exists to enforce: **any change to the terms requires
+fresh acceptance.** A reassigned or postponed task leaves `accepted` and
+sits in a pending state until the new owner agrees to the new terms.
+Nobody is bound to a commitment they did not make. That is stricter than
+most tools and it is deliberate — the product's whole claim is commitment
+integrity, and inheriting an acceptance across changed terms would quietly
+break it.
+
+This also closes a limitation carried since session 3: renegotiated
+threads used to collapse into a single candidate with the reason in a
+free-text `contradiction_note`, and the specified `contradiction_of`
+lineage field was never once populated. Both are replaced by the sequence
+itself. Verified against the fixtures:
+
+| Fixture | Timeline |
+|---|---|
+| `confirmed_commitment.txt` | proposed → accepted |
+| `deadline_change.txt` | proposed → accepted → deadline changed → accepted |
+| `owner_reassignment.txt` | proposed → reassigned → accepted |
+| `cancelled_commitment.txt` | proposed → accepted → cancelled |
+
+**F036 per-field confidence.** One blended number told a reviewer to be
+nervous without telling them what to fix. Confidence is now split across
+wording / owner / date / agreement, and the gate names the weakest field
+in its block reason ("weakest: owner at 0.30") instead of printing a
+composite.
+
+**F037 Naina.** The assistant now has a name and a consistent presence —
+the floating panel, the setup screen, the transcript gap markers and the
+report all speak as her. Deliberately restrained: she narrates what she is
+doing and never claims to have done anything the human did not approve.
+
+**F038 pause and resume.** Pause stops capture on both tracks and
+disables the media tracks, so the browser's recording indicator goes out —
+the signal other participants can actually see. Ordering matters and is
+tested: recorders stop *first*, then the server is told, so a chunk still
+in flight arrives before the server flips state and is dropped there.
+Resume inserts a visible gap marker rather than letting the transcript
+jump silently.
+
+Two things worth recording about the marker:
+
+1. It is stored in the transcript but **excluded from extraction**.
+   Feeding it to the extractor would let Naina cite her own words as
+   evidence for a commitment. There is a test for exactly that.
+2. Pause deliberately discards the in-flight chunk instead of flushing
+   it. That chunk contains audio from the moment the person reached for
+   the button, which is the moment they wanted stopped.
+
+**A flaky test, fixed honestly.** `test_ids_do_not_collide_at_scale` drew
+200,000 ids from a 40-bit space and asserted zero collisions. By the
+birthday bound that fails ~2% of runs — it was asserting something untrue,
+and it duly failed once during this session with nothing changed. It now
+asserts what is actually true and actually matters (collisions negligible
+at a scale far past any real deployment), and `unique_meeting_id` re-draws
+against the repository anyway, so a collision costs a round trip rather
+than a merged meeting.
+
+Test count 452 → 479. Frontend builds clean.
+
 ## Next session
 
 1. Read `AGENTS.md`, `README.md`, `docs/architecture.md`,
@@ -293,6 +362,12 @@ silently returning success.
 2. Run `bash init.sh`.
 3. **Before anything else: one live end-to-end pass** against real Mongo, a
    real `GROQ_API_KEY`, a sandbox GitHub repo, and — if demoing it —
-   Google Calendar credentials. That path is written but unverified.
+   Google Calendar credentials. That path is written but unverified. It
+   now also needs a real pause/resume during that pass: the recorder
+   lifecycle is only exercised by tests, never by a browser.
 4. Then `F019`. If a gold transcript has been released, score the Groq
    extractor with `app/services/evaluation.py` before freezing.
+5. The Groq extractor does not yet emit `timeline` events — only the
+   deterministic reference extractor does. Groq-extracted items fall back
+   to a single derived state, so the timeline UI stays empty on that path.
+   Worth closing before the demo if Groq is the primary extractor.

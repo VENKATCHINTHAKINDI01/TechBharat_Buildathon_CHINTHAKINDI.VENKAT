@@ -15,7 +15,7 @@ from __future__ import annotations
 from datetime import date
 
 from app.domain.models import Participant, ResolvedItem, ValidatedItem
-from app.services.confidence import compute_confidence
+from app.services.confidence import compute_confidence, compute_field_confidence
 from app.services.resolvers.date import resolve_date
 from app.services.resolvers.owner import resolve_owner
 
@@ -33,9 +33,18 @@ def resolve_validated_item(
         date_was_claimed=bool(item.raw_date_mention),
     )
 
+    fields = compute_field_confidence(
+        extraction_confidence=item.confidence,
+        owner_method=owner_method,
+        date_method=date_method,
+        date_was_claimed=bool(item.raw_date_mention),
+        state_settled=item.current_state in (None, "accepted", "rejected", "cancelled"),
+    )
+
     payload = item.model_dump()
     payload["extraction_confidence"] = item.confidence
     payload["confidence"] = composite
+    payload["field_confidence"] = fields.as_dict()
 
     return ResolvedItem(
         **payload,
@@ -59,14 +68,25 @@ def recompute_confidence(item: ResolvedItem) -> ResolvedItem:
     owner rule but stay blocked by a stale low confidence score -- the
     gate would be punishing the item for a problem the reviewer just fixed.
     """
+    extraction = (
+        item.extraction_confidence if item.extraction_confidence is not None else item.confidence
+    )
     composite = compute_confidence(
-        extraction_confidence=item.extraction_confidence
-        if item.extraction_confidence is not None
-        else item.confidence,
+        extraction_confidence=extraction,
         owner_method=item.owner_resolution_method,
         date_method=item.date_resolution_method,
         # A human-set date counts as claimed even if nobody spoke one.
         date_was_claimed=bool(item.raw_date_mention) or item.due_date is not None,
         human_confirmed=item.human_confirmed,
     )
-    return item.model_copy(update={"confidence": composite})
+    fields = compute_field_confidence(
+        extraction_confidence=extraction,
+        owner_method=item.owner_resolution_method,
+        date_method=item.date_resolution_method,
+        date_was_claimed=bool(item.raw_date_mention) or item.due_date is not None,
+        state_settled=item.current_state in (None, "accepted", "rejected", "cancelled"),
+        human_confirmed=item.human_confirmed,
+    )
+    return item.model_copy(
+        update={"confidence": composite, "field_confidence": fields.as_dict()}
+    )

@@ -1,4 +1,6 @@
 import { useState } from "react";
+import CommitmentTimeline from "./CommitmentTimeline";
+import FieldConfidence from "./FieldConfidence";
 
 /**
  * One reviewable candidate.
@@ -18,6 +20,9 @@ const ALL_EFFECTS = [
 
 export default function CandidateCard({ candidate, participants, reviewer, onApprove, onReject, onEdit }) {
   const [open, setOpen] = useState(false);
+  // Open by default when the terms changed mid-meeting — that is exactly
+  // the case where the final state alone would mislead the reviewer.
+  const [showTimeline, setShowTimeline] = useState(Boolean(candidate.was_renegotiated));
   const [effects, setEffects] = useState(["github_issue"]);
   const [confirmIt, setConfirmIt] = useState(false);
   const [results, setResults] = useState(null);
@@ -63,8 +68,12 @@ export default function CandidateCard({ candidate, participants, reviewer, onApp
         <span className={`pill ${eligible ? "ok" : "bad"}`}>
           {eligible ? "gate: eligible" : "gate: blocked"}
         </span>
+        {candidate.was_renegotiated && <span className="pill warn">renegotiated</span>}
+        {candidate.human_confirmed && <span className="pill ok">you confirmed this</span>}
         {candidate.review_status && <span className="pill accent">{candidate.review_status}</span>}
       </div>
+
+      <FieldConfidence fields={candidate.field_confidence} />
 
       {candidate.contradiction_note && (
         <p className="muted">Contradiction: “{candidate.contradiction_note}”</p>
@@ -109,6 +118,11 @@ export default function CandidateCard({ candidate, participants, reviewer, onApp
         <button className="ghost" onClick={() => setOpen((v) => !v)}>
           {open ? "Hide evidence" : `Evidence (${candidate.evidence.length})`}
         </button>
+        {candidate.timeline?.length > 1 && (
+          <button className="ghost" onClick={() => setShowTimeline((v) => !v)}>
+            {showTimeline ? "Hide history" : `History (${candidate.timeline.length})`}
+          </button>
+        )}
         <button className="ghost" onClick={() => setEditing((v) => !v)} disabled={busy}>
           {editing ? "Cancel edit" : "Edit"}
         </button>
@@ -160,6 +174,15 @@ export default function CandidateCard({ candidate, participants, reviewer, onApp
               </label>
             ))}
           </div>
+        </div>
+      )}
+
+      {showTimeline && candidate.timeline?.length > 0 && (
+        <div className="drawer">
+          <CommitmentTimeline
+            timeline={candidate.timeline}
+            renegotiated={candidate.was_renegotiated}
+          />
         </div>
       )}
 

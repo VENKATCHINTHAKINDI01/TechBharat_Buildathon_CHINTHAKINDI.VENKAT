@@ -149,6 +149,46 @@ export class TrackRecorder {
     }, this.chunkMs);
   }
 
+  /**
+   * Stop capturing without releasing the stream.
+   *
+   * Pause has to actually stop the microphone, not buffer quietly — if
+   * someone pauses to say something private, "we kept recording and
+   * transcribed it later" would betray what the button appears to do. The
+   * in-flight chunk is discarded rather than flushed for the same reason:
+   * it contains audio from the moment they reached for the button.
+   *
+   * The *stream* stays open, though. Releasing it would make the browser
+   * re-prompt for screen share on every resume, and a permission dialog
+   * mid-meeting is how people end up sharing the wrong tab.
+   */
+  pause() {
+    if (!this.running) return;
+    this.running = false;
+    clearTimeout(this._timer);
+    if (this._recorder && this._recorder.state !== "inactive") {
+      this._recorder.ondataavailable = null;
+      this._recorder.onstop = () => {};
+      this._recorder.stop();
+    }
+    this._recorder = null;
+    // Track enabled=false is what actually silences the hardware — the
+    // mic indicator in the browser tab goes out, which is the signal
+    // participants can see.
+    this.stream.getAudioTracks().forEach((t) => {
+      t.enabled = false;
+    });
+  }
+
+  resume() {
+    if (this.running) return;
+    this.stream.getAudioTracks().forEach((t) => {
+      t.enabled = true;
+    });
+    this.running = true;
+    this._cycle();
+  }
+
   stop() {
     this.running = false;
     clearTimeout(this._timer);
