@@ -64,8 +64,10 @@ async def _extract(*, extractor, segments: list[TranscriptSegment], meeting_id: 
     return extractor.extract(segments, meeting_id)
 
 
-async def _grade_evidence(*, items: list, segments: list[TranscriptSegment]) -> list:
-    return drop_unsupported_evidence(items, segments)
+async def _grade_evidence(*, items: list, segments: list[TranscriptSegment], report=None) -> list:
+    # `report` is an out-parameter so the caller can explain *why* items
+    # disappeared. Optional, so every existing call site still works.
+    return drop_unsupported_evidence(items, segments, report)
 
 
 async def _resolve_owner(*, mention: Optional[str], participants: list[Participant]):

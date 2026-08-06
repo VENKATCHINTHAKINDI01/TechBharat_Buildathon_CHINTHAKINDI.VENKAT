@@ -396,6 +396,25 @@
       ]
     },
     {
+      "id": "F041",
+      "priority": "P0",
+      "name": "Extraction diagnostics: no silent zero-candidate meetings",
+      "status": "done",
+      "depends_on": [
+        "F005",
+        "F032"
+      ]
+    },
+    {
+      "id": "F042",
+      "priority": "P0",
+      "name": "Evidence matching tolerant of ASR typography, still verbatim",
+      "status": "done",
+      "depends_on": [
+        "F006"
+      ]
+    },
+    {
       "id": "F019",
       "priority": "P0",
       "name": "Evaluation report and demo freeze",

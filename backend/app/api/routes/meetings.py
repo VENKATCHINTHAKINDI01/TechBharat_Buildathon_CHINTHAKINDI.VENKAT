@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
@@ -9,6 +10,7 @@ from fastapi.responses import PlainTextResponse
 
 from app.api import deps
 from app.api.schemas import (
+    ExtractionDiagnostics,
     MeetingDetailResponse,
     ParticipantIn,
     UploadResponse,
@@ -21,6 +23,8 @@ from app.services.ingestion.parser import TranscriptParseError
 from app.services.payload import build_issue_payload
 from app.services.pipeline import run_pipeline
 from app.services.report import collect_actions_taken, generate_report, render_markdown
+
+logger = logging.getLogger("nexvi_meets.api")
 
 router = APIRouter(prefix="/meetings", tags=["meetings"])
 
@@ -337,4 +341,49 @@ async def get_meeting(
         participants=meeting.get("participants", []),
         record=record,
         candidates=views,
+        extraction=await _extraction_diagnostics(repository, meeting_id, len(views)),
     )
+
+
+async def _extraction_diagnostics(
+    repository, meeting_id: str, candidate_count: int
+) -> ExtractionDiagnostics:
+    """Reconstruct what extraction did, from the audit log.
+
+    The audit log is already the system's record of every stage, so
+    reading it here avoids storing the same facts twice and works
+    identically for uploads (which run the agent graph) and live meetings
+    (which do not).
+    """
+    diagnostics = ExtractionDiagnostics(candidates_found=candidate_count)
+    try:
+        events = await repository.list_audit(meeting_id)
+    except Exception as exc:  # noqa: BLE001 -- must never break the page...
+        # ...but must not vanish either. A silent except here is how the
+        # original bug hid: swallow the error, return nothing, look fine.
+        logger.warning("could not read audit log for %s: %s", meeting_id, exc)
+        diagnostics.warnings.append(f"Diagnostics unavailable: {exc}")
+        return diagnostics
+
+    for event in events:
+        payload = event.payload if hasattr(event, "payload") else event.get("payload", {})
+        if not isinstance(payload, dict):
+            continue
+
+        if payload.get("extractor"):
+            diagnostics.extractor = payload["extractor"]
+        if payload.get("fallback_reason"):
+            diagnostics.fallback_reason = payload["fallback_reason"]
+        if payload.get("extraction_error"):
+            diagnostics.fallback_reason = payload["extraction_error"]
+        if payload.get("segments"):
+            diagnostics.segments = max(diagnostics.segments, int(payload["segments"]))
+        if payload.get("evidence_dropped_items"):
+            diagnostics.evidence_dropped_items = int(payload["evidence_dropped_items"])
+        if payload.get("evidence_quotes_dropped"):
+            diagnostics.evidence_quotes_dropped = int(payload["evidence_quotes_dropped"])
+        for warning in payload.get("warnings") or []:
+            if warning not in diagnostics.warnings:
+                diagnostics.warnings.append(warning)
+
+    return diagnostics

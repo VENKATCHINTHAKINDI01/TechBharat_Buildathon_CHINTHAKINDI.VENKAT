@@ -45,7 +45,12 @@ from app.domain.models import (
 )
 from app.domain.safety.gate import check_gate
 from app.services.diarization import Diarizer, DiarizationResult, assign_speakers
-from app.services.extraction.base import Extractor, ExtractionError, drop_unsupported_evidence
+from app.services.extraction.base import (
+    EvidenceReport,
+    Extractor,
+    ExtractionError,
+    drop_unsupported_evidence,
+)
 from app.services.idempotency import compute_dedupe_key
 from app.services.resolvers.combine import resolve_validated_items
 
@@ -154,6 +159,11 @@ class LiveSession:
         self.diarization: Optional[DiarizationResult] = None
         self.warnings: list[str] = []
 
+        # Diagnostics. "0 candidates" must always come with a reason.
+        self.extractor_used: str = getattr(extractor, "name", "unknown")
+        self.extraction_error: Optional[str] = None
+        self.evidence_report: Optional[EvidenceReport] = None
+
     # --- consent ---------------------------------------------------------
 
     def acknowledge_consent(self, note: Optional[str] = None) -> None:
@@ -238,8 +248,7 @@ class LiveSession:
         except TranscriptionError as exc:
             message = f"Dropped a {chunk.track} audio chunk: {exc}"
             logger.warning(message)
-            if message not in self.warnings:
-                self.warnings.append(message)
+            self._warn(message)
             return []
 
         if result.is_empty:
@@ -278,8 +287,7 @@ class LiveSession:
                 f"Audio buffer hit {self.settings.live_max_buffered_mb}MB; "
                 "diarization will cover only the earlier part of the meeting."
             )
-            if warning not in self.warnings:
-                self.warnings.append(warning)
+            self._warn(warning)
             return
         self._remote_audio.append(chunk.data)
         self._remote_mime = chunk.mime
@@ -378,6 +386,57 @@ class LiveSession:
     def should_process(self) -> bool:
         return self._since_last_pass >= self.settings.live_min_new_segments
 
+    # --- extraction, with the failures visible ---------------------------
+
+    def _warn(self, message: str) -> None:
+        if message not in self.warnings:
+            self.warnings.append(message)
+
+    def _extract(self, segments: list[TranscriptSegment]) -> list:
+        """Run the primary extractor, falling back but never silently.
+
+        The old version swallowed ``ExtractionError`` and fell through to
+        the deterministic extractor with no warning and no log entry. On a
+        live meeting that produced exactly one symptom -- "No candidates
+        were extracted from this transcript" -- which is indistinguishable
+        from a quiet meeting. The reason has to reach the operator.
+        """
+        self.extractor_used = getattr(self.extractor, "name", "unknown")
+        try:
+            return self.extractor.extract(segments, self.meeting_id)
+        except ExtractionError as exc:
+            self.extractor_used = getattr(self.fallback_extractor, "name", "reference")
+            self.extraction_error = str(exc)
+            logger.warning("live extraction fell back to %s: %s", self.extractor_used, exc)
+            self._warn(
+                f"The AI extractor failed, so Naina fell back to the pattern-based one, "
+                f"which finds far less in natural speech. Reason: {exc}"
+            )
+            try:
+                return self.fallback_extractor.extract(segments, self.meeting_id)
+            except ExtractionError as fallback_exc:
+                logger.error("both extractors failed: %s", fallback_exc)
+                self._warn(f"Both extractors failed: {fallback_exc}")
+                return []
+
+    def _note_evidence(self, report: EvidenceReport) -> None:
+        """Surface citation-check losses.
+
+        A model that paraphrases its quotes loses every action item here,
+        which looked identical to finding nothing. Now it says so, and
+        names an example.
+        """
+        summary = report.summary
+        if not summary:
+            return
+        self.evidence_report = report
+        detail = f" e.g. {report.examples[0]}" if report.examples else ""
+        logger.info("evidence check: %s", summary)
+        self._warn(
+            f"Evidence check: {summary}. The AI quoted words that are not in the "
+            f"transcript, so those items cannot be shown to you.{detail}"
+        )
+
     @property
     def window(self) -> list[LiveSegment]:
         return list(self._window)
@@ -398,12 +457,10 @@ class LiveSession:
         self._since_last_pass = 0
         window = [s.to_transcript_segment() for s in self._window]
 
-        try:
-            candidates = self.extractor.extract(window, self.meeting_id)
-        except ExtractionError:
-            candidates = self.fallback_extractor.extract(window, self.meeting_id)
-
-        candidates = drop_unsupported_evidence(candidates, window)
+        candidates = self._extract(window)
+        report = EvidenceReport()
+        candidates = drop_unsupported_evidence(candidates, window, report)
+        self._note_evidence(report)
         resolved = resolve_validated_items(candidates, self.participants, self.meeting_date)
 
         for item in resolved:
@@ -433,12 +490,23 @@ class LiveSession:
         # whole point of them -- but feeding them to the extractor would
         # let the tool quote itself as evidence for a commitment.
         full = [s.to_transcript_segment() for s in self.segments if s.track != "marker"]
-        try:
-            candidates = self.extractor.extract(full, self.meeting_id)
-        except ExtractionError:
-            candidates = self.fallback_extractor.extract(full, self.meeting_id)
 
-        candidates = drop_unsupported_evidence(candidates, full)
+        candidates = self._extract(full)
+        report = EvidenceReport()
+        candidates = drop_unsupported_evidence(candidates, full, report)
+        self._note_evidence(report)
+
+        # The one case that used to be invisible: real speech went in and
+        # nothing came out. Silence is a legitimate answer -- plenty of
+        # meetings contain no commitments -- but the operator has to be
+        # able to tell it apart from a broken extractor.
+        if not candidates and len(full) >= 3:
+            self._warn(
+                f"No commitments were found in {len(full)} transcript segments "
+                f"using the '{self.extractor_used}' extractor. If that seems wrong, "
+                "check the audit log for the extraction step."
+            )
+
         for item in resolve_validated_items(candidates, self.participants, self.meeting_date):
             key = compute_dedupe_key(self.meeting_id, item.owner_participant_id, item.raw_text)
             stable = item.model_copy(update={"candidate_id": f"{self.meeting_id}-{key[:10]}"})
@@ -470,6 +538,8 @@ class LiveSession:
             "segments": [s.as_dict() for s in self.segments[-include_segments:]],
             "unattributed": self.unattributed_count,
             "paused": self.paused,
+            "extractor": self.extractor_used,
+            "extraction_error": self.extraction_error,
             "participants": [
                 {"participant_id": p.participant_id, "name": p.name} for p in self.participants
             ],

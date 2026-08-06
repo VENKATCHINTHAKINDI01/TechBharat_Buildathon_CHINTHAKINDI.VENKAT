@@ -74,6 +74,24 @@ class CandidateView(BaseModel):
     proposed_payload: Optional[IssuePayload] = None
 
 
+class ExtractionDiagnostics(BaseModel):
+    """Why this meeting produced the candidates it did — or none.
+
+    An empty review queue is ambiguous on its own: a quiet meeting, a
+    dead API key and a model that paraphrased its citations all look the
+    same. This is reconstructed from the audit log so it works for both
+    the upload and the live path.
+    """
+
+    extractor: Optional[str] = None
+    fallback_reason: Optional[str] = None
+    segments: int = 0
+    candidates_found: int = 0
+    evidence_dropped_items: int = 0
+    evidence_quotes_dropped: int = 0
+    warnings: list[str] = Field(default_factory=list)
+
+
 class MeetingDetailResponse(BaseModel):
     meeting_id: str
     title: str
@@ -81,6 +99,7 @@ class MeetingDetailResponse(BaseModel):
     participants: list[dict]
     record: Optional[MeetingRecord]
     candidates: list[CandidateView]
+    extraction: Optional[ExtractionDiagnostics] = None
 
 
 class ApproveRequest(BaseModel):

@@ -404,6 +404,65 @@ Test count 479 → 488. Still true, and still the biggest risk: **no live
 run has actually succeeded yet.** The preflight has only ever been run
 from a sandbox with no network route to any of the three services.
 
+### 2026-08-06 — Session 10 (the first live meeting, and why it produced nothing)
+
+The first real live meeting captured a transcript and then reported **"No
+candidates were extracted from this transcript"**, with a structured
+record of all zeros. The full suite was green at the time. That gap
+between "tests pass" and "works end to end" is the whole story of this
+session.
+
+**The bug was not the failure. It was the silence.** Three completely
+different situations produced that identical screen:
+
+1. the LLM call failed and `live.py` swallowed `ExtractionError`, falling
+   through to the pattern-based extractor, which finds almost nothing in
+   natural speech;
+2. the LLM answered but paraphrased its citations, so every action item
+   was dropped by `drop_unsupported_evidence`;
+3. the meeting genuinely contained no commitments.
+
+The fallback is correct behaviour and stays. What was wrong is that it
+was invisible: no warning, no log line, no audit entry. `live.py` now
+records the extractor used, the actual error, and what the citation check
+removed; all of it reaches the websocket snapshot, the audit log, and a
+new `extraction` block on the meeting detail API. The review screen
+renders a different explanation for each of the three cases instead of
+one ambiguous sentence.
+
+**F042 evidence matching.** The citation check demanded an exact
+substring. Whisper emits curly apostrophes and em dashes; a model quoting
+that text back almost always straightens them. Every such quote was being
+treated as a hallucination, which silently destroyed correct action
+items. Matching now folds both sides — NFKC, unified quotes and dashes,
+collapsed whitespace, case — but **returns the span from the segment**,
+via an index map back through the folding. So the guarantee is unchanged:
+what a reviewer sees is literally the speaker's words, never the model's
+rendering of them. A genuine paraphrase still fails, and there are tests
+for exactly that boundary.
+
+**Groq structured output.** `openai/gpt-oss-120b` supports `json_schema`
+with `strict: true` — constrained decoding, so the API cannot return
+malformed JSON at all. The extractor now sends a full schema on models
+that support it and falls back to `json_object` on a 400. Non-400 errors
+stop immediately rather than burning a second call, and the failure
+message now names the model and every attempt.
+
+**Two mistakes worth recording.** Wiring the diagnostics I called
+`repository.list_audit_events`, which does not exist — and my own
+`try/except` swallowed the `AttributeError` and returned empty
+diagnostics. I had reproduced the exact bug I was fixing, in the fix.
+Second, I initially reached for a `note_call` shortcut that would have
+bypassed the tool registry; the report is now threaded through
+`grade_evidence` as an out-parameter so the tool-call trail stays intact.
+
+**F041 also added a full-journey test** — upload, review, gate, approve,
+idempotency, report, history, audit, agent run — because every seam was
+individually green while the path between them was broken.
+
+Test count 488 → 514. A 20-check end-to-end smoke over the real API
+passes 20/20.
+
 ## Next session
 
 1. Read `AGENTS.md`, `README.md`, `docs/architecture.md`,

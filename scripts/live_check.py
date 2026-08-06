@@ -267,10 +267,19 @@ def check_groq(settings) -> bool:
     ]
 
     started = time.perf_counter()
+    extractor = GroqExtractor(settings=settings, client=client)
     try:
-        items = GroqExtractor(settings=settings, client=client).extract(segments, "probe")
+        items = extractor.extract(segments, "probe")
     except Exception as exc:
-        _record("FAIL", "extraction", _fmt_exc(exc))
+        _record(
+            "FAIL",
+            "extraction",
+            f"{_fmt_exc(exc)}\n\n"
+            "This is the failure that makes a live meeting report\n"
+            "'no candidates extracted' -- the app falls back to the\n"
+            "pattern-based extractor, which finds almost nothing in\n"
+            "natural speech.",
+        )
         return False
 
     elapsed = time.perf_counter() - started
@@ -310,6 +319,35 @@ def check_groq(settings) -> bool:
         _record("PASS", "final date is Thursday (not Friday)")
     else:
         _record("WARN", "final date", f"got {item.raw_date_mention!r}, expected Thursday")
+
+    # The quietest way to lose a whole meeting: the model answers, but
+    # quotes words nobody said, so every action item is dropped by the
+    # citation check and the queue comes up empty with no explanation.
+    from app.services.extraction.base import EvidenceReport, drop_unsupported_evidence
+
+    report = EvidenceReport()
+    survivors = drop_unsupported_evidence(items, segments, report)
+
+    if report.dropped_items:
+        _record(
+            "FAIL",
+            "evidence quotes are real",
+            f"{len(report.dropped_items)} of {len(items)} item(s) were dropped because the\n"
+            f"model quoted words that are not in the transcript.\n"
+            f"e.g. {report.examples[0] if report.examples else ''}\n\n"
+            "This is what produces an empty review queue on a meeting that\n"
+            "clearly contained commitments.",
+        )
+        return False
+
+    detail = ""
+    if report.quotes_repaired:
+        detail = (
+            f"{report.quotes_repaired} quote(s) matched only after normalising\n"
+            "typography (curly apostrophes, dashes). Handled automatically."
+        )
+    _record("PASS", f"all {report.quotes_kept} evidence quote(s) verified", detail)
+    _record("PASS", f"{len(survivors)} item(s) survive the full pipeline")
 
     return True
 

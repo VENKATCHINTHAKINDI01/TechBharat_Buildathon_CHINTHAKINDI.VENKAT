@@ -145,6 +145,91 @@ and write "text" in English, but keep "quote" in the original language, verbatim
 - Output valid JSON only. No markdown fences, no commentary.
 """
 
+#: Models with constrained decoding (`strict: true`). On these the API
+#: *cannot* return JSON that violates the schema, which removes the whole
+#: class of "the model wrote prose and json.loads blew up" failures.
+STRICT_JSON_MODELS = ("openai/gpt-oss-120b", "openai/gpt-oss-20b", "openai/gpt-oss-safeguard-20b")
+
+
+def _nullable(kind: str) -> dict:
+    return {"type": [kind, "null"]}
+
+
+#: Strict mode requires every property to be listed in ``required`` and
+#: ``additionalProperties: false``; optionality is expressed as a nullable
+#: type instead. That is why this looks more verbose than the prompt.
+RESPONSE_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["items"],
+    "properties": {
+        "items": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "kind", "text", "classification", "owner_mention", "date_mention",
+                    "priority", "confidence", "evidence", "contradiction_note", "timeline",
+                ],
+                "properties": {
+                    "kind": {
+                        "type": "string",
+                        "enum": ["action_item", "decision", "risk", "blocker", "open_question"],
+                    },
+                    "text": {"type": "string"},
+                    "classification": {
+                        "type": "string",
+                        "enum": ["confirmed", "suggestion", "disputed", "rejected", "cancelled"],
+                    },
+                    "owner_mention": _nullable("string"),
+                    "date_mention": _nullable("string"),
+                    "priority": {"type": "string", "enum": ["low", "medium", "high"]},
+                    "confidence": {"type": "number"},
+                    "evidence": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "required": ["segment_id", "quote"],
+                            "properties": {
+                                "segment_id": {"type": "string"},
+                                "quote": {"type": "string"},
+                            },
+                        },
+                    },
+                    "contradiction_note": _nullable("string"),
+                    "timeline": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "required": [
+                                "state", "segment_id", "quote", "actor",
+                                "owner_mention", "date_mention",
+                            ],
+                            "properties": {
+                                "state": {
+                                    "type": "string",
+                                    "enum": [
+                                        "proposed", "accepted", "reassigned",
+                                        "deadline_changed", "disputed", "rejected", "cancelled",
+                                    ],
+                                },
+                                "segment_id": {"type": "string"},
+                                "quote": {"type": "string"},
+                                "actor": _nullable("string"),
+                                "owner_mention": _nullable("string"),
+                                "date_mention": _nullable("string"),
+                            },
+                        },
+                    },
+                },
+            },
+        }
+    },
+}
+
 _STATE_BY_NAME = {s.value: s for s in CommitmentState}
 _KIND_BY_NAME = {k.value: k for k in CandidateKind}
 _CLASSIFICATION_BY_NAME = {c.value: c for c in Classification}
@@ -164,6 +249,9 @@ class GroqExtractor:
         self._settings = settings or get_settings()
         self._client = client
         self._segment_start: dict[str, int] = {}
+        # Kept for diagnostics: when a live meeting produces nothing, the
+        # first question is always "what did the model actually say?"
+        self.last_raw_response: str = ""
 
     def _get_client(self):
         if self._client is None:
@@ -181,22 +269,63 @@ class GroqExtractor:
             return []
 
         client = self._get_client()
-        try:
-            completion = client.chat.completions.create(
-                model=self._settings.groq_model,
-                messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": render_segments(segments)},
-                ],
-                response_format={"type": "json_object"},
-                temperature=0.1,
-                timeout=self._settings.groq_timeout_seconds,
-            )
-            raw = completion.choices[0].message.content
-        except Exception as exc:  # noqa: BLE001 -- any provider failure is a fallback trigger
-            raise ExtractionError(f"Groq extraction failed: {exc}") from exc
+        model = self._settings.groq_model
+        messages = [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": render_segments(segments)},
+        ]
 
-        return self._parse(raw, meeting_id, segments)
+        # Prefer constrained decoding where the model supports it: the API
+        # then cannot return malformed JSON at all. Everything else gets
+        # JSON object mode, which is best-effort.
+        if any(model.startswith(prefix) for prefix in STRICT_JSON_MODELS):
+            formats = [
+                {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "nexvi_extraction",
+                        "strict": True,
+                        "schema": RESPONSE_SCHEMA,
+                    },
+                },
+                {"type": "json_object"},
+            ]
+        else:
+            formats = [{"type": "json_object"}]
+
+        errors: list[str] = []
+        for response_format in formats:
+            try:
+                completion = client.chat.completions.create(
+                    model=model,
+                    messages=messages,
+                    response_format=response_format,
+                    temperature=0.1,
+                    timeout=self._settings.groq_timeout_seconds,
+                )
+            except Exception as exc:  # noqa: BLE001 -- provider failures trigger the fallback
+                label = response_format["type"]
+                errors.append(f"{label}: {exc}")
+                # A 400 means this response_format is unsupported here, so
+                # the next one is worth trying. Anything else -- auth,
+                # rate limit, timeout, model gone -- will fail identically
+                # a second time, so stop and report it.
+                if "400" in str(exc) or "response_format" in str(exc).lower():
+                    continue
+                break
+
+            raw = completion.choices[0].message.content
+            if not raw or not raw.strip():
+                # Reasoning models occasionally spend the whole completion
+                # budget thinking and return empty content.
+                errors.append(f"{response_format['type']}: model returned empty content")
+                continue
+            self.last_raw_response = raw
+            return self._parse(raw, meeting_id, segments)
+
+        raise ExtractionError(
+            f"Groq extraction failed for model '{model}' -- " + " | ".join(errors)
+        )
 
     def _build_thread(
         self,

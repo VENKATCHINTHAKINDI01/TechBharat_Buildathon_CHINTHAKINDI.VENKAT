@@ -380,6 +380,19 @@ async def live_session(
                             "candidates": len(session.items_by_key),
                             "eligible": session.eligible_count,
                             "unattributed_segments": session.unattributed_count,
+                            # Without these, a meeting that produced nothing
+                            # leaves no trace of *why*.
+                            "extractor": session.extractor_used,
+                            "extraction_error": session.extraction_error,
+                            "evidence_dropped_items": (
+                                len(session.evidence_report.dropped_items)
+                                if session.evidence_report else 0
+                            ),
+                            "evidence_quotes_dropped": (
+                                session.evidence_report.quotes_dropped
+                                if session.evidence_report else 0
+                            ),
+                            "warnings": session.warnings,
                         },
                     )
 

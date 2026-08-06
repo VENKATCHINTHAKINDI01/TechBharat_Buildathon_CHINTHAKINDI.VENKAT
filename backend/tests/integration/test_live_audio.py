@@ -527,3 +527,47 @@ def test_the_asker_cannot_accept_on_the_owners_behalf(client):
     candidate = snapshot["candidates"][0]
     assert candidate["current_state"] == "proposed"
     assert candidate["classification"] == "suggestion"
+
+
+# --- diagnostics reach the review screen -----------------------------------
+
+
+def test_a_meeting_that_found_nothing_explains_itself(client, transcriber):
+    """The bug this closes: a live meeting reported "No candidates were
+    extracted" with no way to tell a quiet meeting from a broken one."""
+    for line in ("Morning everyone.", "Morning.", "Nice weather today."):
+        transcriber.queue("mic", line)
+
+    with client.websocket_connect("/live") as ws:
+        _start(ws)
+        for seq in range(3):
+            _audio(ws, "mic", seq, offset_ms=seq * 6000)
+        ws.send_json({"type": "end"})
+        _drain(ws, "ended", limit=14)
+
+    detail = client.get("/meetings/live-demo").json()
+    assert detail["candidates"] == []
+
+    extraction = detail["extraction"]
+    assert extraction is not None
+    assert extraction["segments"] >= 3
+    assert extraction["candidates_found"] == 0
+    assert any("No commitments were found" in w for w in extraction["warnings"])
+
+
+def test_diagnostics_survive_for_a_meeting_that_did_find_things(client):
+    with client.websocket_connect("/live") as ws:
+        _start(ws)
+        ws.send_json({"type": "text", "speaker": "Arjun",
+                      "text": "Rohit, can you finish the API migration by Friday?"})
+        _drain(ws, "segments")
+        ws.send_json({"type": "text", "speaker": "Rohit",
+                      "text": "Yes, I will finish the API migration by Friday."})
+        _drain(ws, "snapshot")
+        ws.send_json({"type": "end"})
+        _drain(ws, "ended", limit=14)
+
+    detail = client.get("/meetings/live-demo").json()
+    assert detail["candidates"]
+    assert detail["extraction"]["candidates_found"] == len(detail["candidates"])
+    assert detail["extraction"]["fallback_reason"] is None

@@ -99,6 +99,21 @@ closes it again. That is deliberate: a read-only permission check passes
 right up until the moment you demo, which is exactly the failure that has
 already bitten this project once.
 
+### If the review queue comes up empty
+
+This is the failure that actually happened on the first live run, so it
+gets its own section. An empty queue after a real conversation means one
+of three things, and the app now tells you which:
+
+| What you see | What it means | Fix |
+|---|---|---|
+| "The AI extractor failed" + a reason | Groq call failed; Naina fell back to the pattern extractor, which finds almost nothing in real speech | Usually an invalid `GROQ_API_KEY` or a retired `GROQ_MODEL`. Run the preflight. |
+| "N items were found but could not be shown" | The model quoted words that are not in the transcript, so the items have no usable evidence | Model quality. Check the audit log for what was dropped. |
+| "No commitments were found" | Nobody committed to anything | Nothing to fix. |
+
+If none of those appear and the queue is still empty, that itself is a
+bug — say so, because every path is now supposed to explain itself.
+
 ### The three failures you are most likely to hit
 
 **Mongo: SSL handshake / server selection timeout.** The Atlas IP

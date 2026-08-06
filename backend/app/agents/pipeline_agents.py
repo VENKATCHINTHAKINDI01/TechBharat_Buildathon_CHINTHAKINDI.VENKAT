@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from app.agents.base import AgentContext, PipelineState
 from app.domain.models import AuditStage
-from app.services.extraction.base import ExtractionError
+from app.services.extraction.base import EvidenceReport, ExtractionError
 
 
 class IngestionAgent:
@@ -118,19 +118,33 @@ class ValidationAgent:
 
     async def run(self, state: PipelineState, ctx: AgentContext) -> PipelineState:
         before = len(state.candidates)
+        # The report is an out-parameter: the tool returns the surviving
+        # items, and fills this in with what it removed and why. Going
+        # through the registry (rather than calling the function directly)
+        # is what keeps the tool-call trail complete.
+        report = EvidenceReport()
         state.candidates = await ctx.tools.invoke(
-            "grade_evidence", items=state.candidates, segments=state.segments
+            "grade_evidence",
+            items=state.candidates,
+            segments=state.segments,
+            report=report,
         )
         dropped = before - len(state.candidates)
         if dropped:
             state.warnings.append(
-                f"{dropped} candidate(s) dropped for unsupported evidence quotes"
+                f"{dropped} candidate(s) dropped because the extractor quoted words that "
+                f"are not in the transcript"
+                + (f" — e.g. {report.examples[0]}" if report.examples else "")
             )
 
         await ctx.audit.record(
             AuditStage.validation,
             {
                 "dropped_for_unsupported_evidence": dropped,
+                "evidence_dropped_items": len(report.dropped_items),
+                "evidence_quotes_dropped": report.quotes_dropped,
+                "evidence_quotes_repaired": report.quotes_repaired,
+                "warnings": state.warnings,
                 "classifications": {
                     c: sum(1 for v in state.candidates if v.classification.value == c)
                     for c in sorted({v.classification.value for v in state.candidates})
