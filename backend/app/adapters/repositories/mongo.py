@@ -123,6 +123,11 @@ class MongoRepository:
         for item in items:
             await self.update_item(item)
 
+    async def delete_items(self, meeting_id: str) -> int:
+        """Remove a meeting's candidates so re-analysis starts clean."""
+        result = await self._db.nm_items.delete_many({"meeting_id": meeting_id})
+        return result.deleted_count
+
     async def list_items(self, meeting_id: str) -> list[ResolvedItem]:
         return [
             ResolvedItem.model_validate(_strip_id(d))

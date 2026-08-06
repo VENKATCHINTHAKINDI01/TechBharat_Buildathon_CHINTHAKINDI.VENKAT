@@ -102,6 +102,8 @@ async def run_pipeline(
     normalizer: Any = None,
     memory_store: Any = None,
     meeting_id: str | None = None,
+    utterances: list | None = None,
+    media_source: str | None = None,
 ) -> PipelineOutcome:
     settings = settings or get_settings()
     meeting_id = meeting_id or await unique_meeting_id(repository.get_meeting, meeting_date)
@@ -131,6 +133,8 @@ async def run_pipeline(
         title=title,
         meeting_date=meeting_date,
         participants=participants,
+        utterances=list(utterances or []),
+        media_source=media_source,
     )
 
     graph = build_runtime(settings)

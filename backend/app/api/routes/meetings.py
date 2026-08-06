@@ -11,17 +11,27 @@ from fastapi.responses import PlainTextResponse
 from app.api import deps
 from app.api.schemas import (
     ExtractionDiagnostics,
+    SpeakerAssignmentRequest,
+    SpeakerAssignmentResponse,
     MeetingDetailResponse,
     ParticipantIn,
     UploadResponse,
     to_candidate_view,
 )
 from app.core.config import Settings
-from app.domain.models import Participant, TranscriptSegment
+from app.domain.models import AuditStage, Participant, TranscriptSegment
 from app.domain.safety.gate import check_gate
+from app.services.ingestion.media import (
+    MediaIngestionError,
+    extension_of,
+    is_media,
+    transcribe_media,
+)
 from app.services.ingestion.parser import TranscriptParseError
 from app.services.payload import build_issue_payload
+from app.services.audit import AuditLogger
 from app.services.pipeline import run_pipeline
+from app.services.retagging import RetaggingError, apply_assignments, reanalyse
 from app.services.report import collect_actions_taken, generate_report, render_markdown
 
 logger = logging.getLogger("nexvi_meets.api")
@@ -29,6 +39,10 @@ logger = logging.getLogger("nexvi_meets.api")
 router = APIRouter(prefix="/meetings", tags=["meetings"])
 
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024  # a 45-minute transcript is ~100KB; 5MB is generous
+# Recordings are a different order of magnitude: a 45-minute m4a is
+# ~40MB and the same meeting as 1080p video can be 500MB+.
+MAX_MEDIA_BYTES = 500 * 1024 * 1024
+TEXT_EXTENSIONS = {"txt", "vtt", "srt"}
 
 
 def _parse_participants(raw: str | None) -> list[ParticipantIn]:
@@ -81,14 +95,46 @@ async def upload_meeting(
     participants: str | None = Form(None),
     repository=Depends(deps.get_repository),
     settings: Settings = Depends(deps.get_app_settings),
+    transcriber=Depends(deps.get_transcriber),
 ) -> UploadResponse:
     raw = await file.read()
-    if len(raw) > MAX_UPLOAD_BYTES:
-        raise HTTPException(413, "Transcript exceeds the 5MB limit")
-    try:
-        content = raw.decode("utf-8")
-    except UnicodeDecodeError:
-        raise HTTPException(400, "Transcript must be UTF-8 text (.txt, .vtt or .srt)")
+    filename = file.filename or "transcript.txt"
+    media = is_media(filename)
+
+    limit = MAX_MEDIA_BYTES if media else MAX_UPLOAD_BYTES
+    if len(raw) > limit:
+        raise HTTPException(
+            413,
+            f"File is {len(raw) / 1024 / 1024:.0f}MB, over the "
+            f"{limit // 1024 // 1024}MB limit for "
+            + ("recordings." if media else "transcripts.")
+            + ("" if media else " Audio and video may be up to 500MB."),
+        )
+
+    if not media and extension_of(filename) not in TEXT_EXTENSIONS:
+        # Catch it here rather than letting the parser say "unsupported
+        # transcript extension", which reads like an internal error and
+        # does not tell anyone what IS supported.
+        raise HTTPException(
+            400,
+            f"'.{extension_of(filename) or filename}' is not a format Nexvi.Meets can read.\n"
+            "Transcripts: .txt, .vtt, .srt\n"
+            "Recordings: .mp3, .wav, .m4a, .aac, .ogg, .opus, .flac, "
+            ".mp4, .mov, .mkv, .avi, .webm",
+        )
+
+    content = ""
+    if not media:
+        try:
+            content = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            extension = extension_of(filename)
+            raise HTTPException(
+                400,
+                f"'.{extension}' is not a format Nexvi.Meets can read. "
+                "Upload a transcript (.txt, .vtt, .srt) or a recording "
+                "(.mp3, .wav, .m4a, .mp4, .mov, .webm).",
+            )
 
     try:
         parsed_date = date.fromisoformat(meeting_date)
@@ -103,11 +149,35 @@ async def upload_meeting(
             "without a participant directory, so every item would be blocked.",
         )
 
+    # Speech-to-text runs before the agent graph: it is the slow part, and
+    # keeping it out of the graph means a transcription failure reports as
+    # itself rather than as "the ingestion agent failed".
+    utterances = None
+    media_source = None
+    media_warnings: list[str] = []
+    if media:
+        try:
+            transcript = await transcribe_media(
+                data=raw, filename=filename, transcriber=transcriber
+            )
+        except MediaIngestionError as exc:
+            raise HTTPException(422, str(exc))
+        utterances = transcript.utterances
+        media_source = transcript.engine
+        media_warnings = transcript.warnings
+        logger.info(
+            "transcribed %s: %.0fs, %s chunk(s), %s utterances via %s",
+            filename, transcript.duration_seconds, transcript.chunks,
+            len(utterances), transcript.engine,
+        )
+
     try:
         outcome = await run_pipeline(
             repository=repository,
-            filename=file.filename or "transcript.txt",
+            filename=filename,
             content=content,
+            utterances=utterances,
+            media_source=media_source,
             title=title,
             meeting_date=parsed_date,
             participants=participant_models,
@@ -130,7 +200,8 @@ async def upload_meeting(
         eligible=outcome.eligible_count,
         extractor_used=outcome.extractor_used,
         fallback_reason=outcome.fallback_reason,
-        warnings=outcome.warnings,
+        warnings=outcome.warnings + media_warnings,
+        source=media_source or "transcript",
     )
 
 
@@ -207,6 +278,93 @@ async def meeting_actions(meeting_id: str, repository=Depends(deps.get_repositor
         "count": len(actions),
         "actions": [a.model_dump(mode="json") for a in actions],
     }
+
+
+@router.post("/{meeting_id}/speakers", response_model=SpeakerAssignmentResponse)
+async def assign_speakers(
+    meeting_id: str,
+    body: SpeakerAssignmentRequest,
+    repository=Depends(deps.get_repository),
+    settings: Settings = Depends(deps.get_app_settings),
+) -> SpeakerAssignmentResponse:
+    """Say who spoke, then re-analyse.
+
+    This is what makes an uploaded recording usable. Until a human
+    attributes the speech, every commitment resolves to no owner and the
+    gate blocks it -- which is the correct behaviour, not a bug to work
+    around.
+    """
+    meeting = await repository.get_meeting(meeting_id)
+    if not meeting:
+        raise HTTPException(404, "Meeting not found")
+
+    participants = [Participant.model_validate(p) for p in meeting.get("participants", [])]
+    segments = await repository.list_segments(meeting_id)
+    if not segments:
+        raise HTTPException(422, "This meeting has no transcript to attribute.")
+
+    try:
+        updated_segments, updated = apply_assignments(
+            segments,
+            assignments=body.assignments,
+            relabel=body.relabel,
+            participants=participants,
+        )
+    except RetaggingError as exc:
+        raise HTTPException(400, str(exc))
+
+    await repository.save_segments(meeting_id, updated_segments)
+
+    audit = AuditLogger(repository, meeting_id)
+    await audit.record(
+        AuditStage.review,
+        {
+            "event": "speakers_assigned",
+            "reviewer": body.reviewer,
+            "segments_updated": updated,
+            "assignments": body.assignments,
+            "relabel": body.relabel,
+        },
+    )
+
+    response = SpeakerAssignmentResponse(
+        meeting_id=meeting_id, segments_updated=updated, reanalysed=False
+    )
+    if not body.reanalyze or not updated:
+        return response
+
+    try:
+        outcome = await reanalyse(
+            repository=repository,
+            meeting_id=meeting_id,
+            segments=updated_segments,
+            participants=participants,
+            meeting_date=date.fromisoformat(meeting.get("meeting_date")),
+            settings=settings,
+        )
+    except RetaggingError as exc:
+        # The speakers were still updated; only re-analysis declined.
+        response.warnings.append(str(exc))
+        return response
+
+    response.reanalysed = True
+    response.candidates = len(outcome.candidates)
+    response.eligible = sum(1 for d in outcome.gate_decisions.values() if d.eligible)
+    response.extractor_used = outcome.extractor_used
+    response.warnings = outcome.warnings
+
+    await audit.record(
+        AuditStage.extraction,
+        {
+            "event": "reanalysed_after_tagging",
+            "extractor": outcome.extractor_used,
+            "fallback_reason": outcome.fallback_reason,
+            "candidates": len(outcome.candidates),
+            "segments": len(updated_segments),
+            "warnings": outcome.warnings,
+        },
+    )
+    return response
 
 
 @router.get("/{meeting_id}/transcript")

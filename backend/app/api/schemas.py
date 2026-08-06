@@ -33,6 +33,11 @@ class UploadResponse(BaseModel):
     extractor_used: str
     fallback_reason: Optional[str] = None
     warnings: list[str] = Field(default_factory=list)
+    # "transcript" for a parsed file, otherwise the STT engine that
+    # produced the words — the UI says so, because a transcribed
+    # recording has no speaker labels and that changes what the reviewer
+    # has to do next.
+    source: str = "transcript"
 
 
 class GateView(BaseModel):
@@ -72,6 +77,30 @@ class CandidateView(BaseModel):
     review_status: Optional[str] = None
     issue_url: Optional[str] = None
     proposed_payload: Optional[IssuePayload] = None
+
+
+class SpeakerAssignmentRequest(BaseModel):
+    """Who actually spoke, from a human who was there.
+
+    ``assignments`` fixes individual segments; ``relabel`` maps a whole
+    existing label (usually "Unknown speaker") onto one participant,
+    which is the common case for a single-voice recording.
+    """
+
+    assignments: dict[str, str] = Field(default_factory=dict)   # segment_id -> participant_id
+    relabel: dict[str, str] = Field(default_factory=dict)       # speaker name -> participant_id
+    reanalyze: bool = True
+    reviewer: str = "demo_reviewer"
+
+
+class SpeakerAssignmentResponse(BaseModel):
+    meeting_id: str
+    segments_updated: int
+    reanalysed: bool
+    candidates: int = 0
+    eligible: int = 0
+    extractor_used: str = "unknown"
+    warnings: list[str] = Field(default_factory=list)
 
 
 class ExtractionDiagnostics(BaseModel):

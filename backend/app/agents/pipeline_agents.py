@@ -29,6 +29,23 @@ class IngestionAgent:
     tools = ("parse_transcript",)
 
     async def run(self, state: PipelineState, ctx: AgentContext) -> PipelineState:
+        # Audio and video arrive already transcribed: speech-to-text runs
+        # in the route, before the graph, because it is slow and needs to
+        # stream progress. The agent records where the utterances came
+        # from rather than silently accepting them.
+        if state.utterances:
+            await ctx.audit.record(
+                AuditStage.ingestion,
+                {
+                    "outcome": "transcribed",
+                    "filename": state.filename,
+                    "utterances": len(state.utterances),
+                    "source": state.media_source or "media",
+                },
+            )
+            state._last_summary = f"{len(state.utterances)} utterances from audio"
+            return state
+
         state.utterances = await ctx.tools.invoke(
             "parse_transcript", filename=state.filename, content=state.content
         )

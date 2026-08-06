@@ -63,6 +63,18 @@ class InMemoryRepository:
         for item in items:
             self._items[item.candidate_id] = item
 
+    async def delete_items(self, meeting_id: str) -> int:
+        """Remove a meeting's candidates so re-analysis starts clean.
+
+        Without this, re-extracting after tagging speakers would leave
+        the previous run's items behind under their old ids, and the
+        review queue would show both.
+        """
+        doomed = [k for k, v in self._items.items() if v.meeting_id == meeting_id]
+        for key in doomed:
+            del self._items[key]
+        return len(doomed)
+
     async def list_items(self, meeting_id: str) -> list[ResolvedItem]:
         return [i for i in self._items.values() if i.meeting_id == meeting_id]
 

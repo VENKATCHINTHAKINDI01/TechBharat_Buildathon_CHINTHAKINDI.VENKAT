@@ -46,6 +46,10 @@ class PipelineState:
     meeting_date: date
     participants: list[Participant]
 
+    # Set when utterances came from speech-to-text rather than a parsed
+    # transcript file, so the audit trail can say which.
+    media_source: Optional[str] = None
+
     utterances: list = field(default_factory=list)
     segments: list[TranscriptSegment] = field(default_factory=list)
     candidates: list[ValidatedItem] = field(default_factory=list)
