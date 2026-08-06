@@ -21,7 +21,7 @@ from app.api.schemas import (
     RejectRequest,
 )
 from app.core.config import Settings
-from app.domain.models import AuditStage, Participant, SideEffect
+from app.domain.models import AuditStage, Classification, Participant, SideEffect
 from app.services.approval import ApprovalRefused, approve_and_execute, reject_candidate
 from app.services.audit import AuditLogger
 from app.services.payload import build_issue_payload
@@ -149,6 +149,26 @@ async def edit(
         )
 
     update: dict = dict(changes)
+
+    # A reviewer correcting the model's classification is the whole point
+    # of human-in-the-loop. "Everyone should ship by Friday" reads as a
+    # suggestion to an extractor; someone who was in the room may know
+    # Arjun actually took it. Recorded as a human override -- and because
+    # their judgement outranks the model's guess, it replaces the
+    # extraction component of the confidence score. Without that, a
+    # reviewer could fix classification, owner AND date and the item would
+    # still sit under the threshold, which is a dead end, not caution.
+    if "classification" in update:
+        try:
+            update["classification"] = Classification(update["classification"])
+        except ValueError:
+            raise HTTPException(
+                400,
+                f"classification must be one of {[c.value for c in Classification]}",
+            )
+        update["human_confirmed"] = True
+        update["human_confirmed_by"] = body.reviewer
+
     if "owner_participant_id" in update:
         # A human picking the owner is a stronger signal than any
         # matcher, so the resolution method records that provenance.
@@ -177,6 +197,8 @@ async def edit(
             "changed_fields": {
                 k: (v.isoformat() if hasattr(v, "isoformat") else v) for k, v in changes.items()
             },
+            "human_override": "classification" in changes,
+            "confidence_after": edited_item.confidence,
             "edited_at": datetime.now(timezone.utc).isoformat(),
         },
         candidate_id=candidate_id,

@@ -106,6 +106,10 @@ class EditRequest(BaseModel):
     raw_text: Optional[str] = None
     owner_participant_id: Optional[str] = None
     due_date: Optional[date] = None
+    # A reviewer correcting the model. Setting this to "confirmed" is the
+    # human saying "yes, this really was a commitment" -- recorded as an
+    # override in the audit log, never inferred.
+    classification: Optional[str] = None
     priority: Optional[Priority] = None
 
 

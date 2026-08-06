@@ -65,6 +65,8 @@ def recompute_confidence(item: ResolvedItem) -> ResolvedItem:
         else item.confidence,
         owner_method=item.owner_resolution_method,
         date_method=item.date_resolution_method,
-        date_was_claimed=bool(item.raw_date_mention),
+        # A human-set date counts as claimed even if nobody spoke one.
+        date_was_claimed=bool(item.raw_date_mention) or item.due_date is not None,
+        human_confirmed=item.human_confirmed,
     )
     return item.model_copy(update={"confidence": composite})

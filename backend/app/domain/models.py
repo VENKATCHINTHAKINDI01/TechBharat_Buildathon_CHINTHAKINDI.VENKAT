@@ -173,6 +173,12 @@ class ResolvedItem(ValidatedItem):
     """
 
     extraction_confidence: Optional[float] = None
+    # True once a reviewer explicitly vouched for this item -- corrected
+    # its classification, or confirmed a vague one really was a commitment.
+    # A person who was in the room outranks the model's guess, so this
+    # replaces the extraction component of the confidence blend.
+    human_confirmed: bool = False
+    human_confirmed_by: Optional[str] = None
     owner_participant_id: Optional[str] = None
     owner_resolution_method: OwnerResolutionMethod = OwnerResolutionMethod.unresolved
     due_date: Optional[date] = None

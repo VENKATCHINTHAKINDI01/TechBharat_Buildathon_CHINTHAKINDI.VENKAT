@@ -19,6 +19,7 @@ const ALL_EFFECTS = [
 export default function CandidateCard({ candidate, participants, reviewer, onApprove, onReject, onEdit }) {
   const [open, setOpen] = useState(false);
   const [effects, setEffects] = useState(["github_issue"]);
+  const [confirmIt, setConfirmIt] = useState(false);
   const [results, setResults] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -66,12 +67,16 @@ export default function CandidateCard({ candidate, participants, reviewer, onApp
 
       {!eligible && (
         <div className="reasons">
-          <strong>Blocked by the safety gate:</strong>
+          <strong>Needs your input before anything can be created:</strong>
           <ul>
             {candidate.gate.reasons.map((r) => (
               <li key={r}>{r}</li>
             ))}
           </ul>
+          <p className="muted" style={{ margin: "8px 0 0" }}>
+            It’s captured and kept either way. Use <strong>Edit</strong> to set the owner, the
+            date, or to confirm it really was a commitment.
+          </p>
         </div>
       )}
 
@@ -174,6 +179,32 @@ export default function CandidateCard({ candidate, participants, reviewer, onApp
           <p className="muted">
             Edits change the item itself, so the safety gate re-evaluates the corrected values.
           </p>
+          {candidate.classification !== "confirmed" && (
+            <div
+              className="field"
+              style={{
+                padding: 10,
+                background: "var(--bg)",
+                borderRadius: 8,
+                marginBottom: 14,
+              }}
+            >
+              <label style={{ display: "flex", gap: 9, cursor: "pointer", marginBottom: 0 }}>
+                <input
+                  type="checkbox"
+                  style={{ width: "auto", marginTop: 3 }}
+                  checked={confirmIt}
+                  onChange={(e) => setConfirmIt(e.target.checked)}
+                />
+                <span style={{ color: "var(--text)", fontSize: 13 }}>
+                  <strong>This really was a commitment.</strong> The model read it as “
+                  {candidate.classification}”. If you were in the room and know someone took it,
+                  say so — it’s recorded as your decision in the audit log.
+                </span>
+              </label>
+            </div>
+          )}
+
           <div className="row">
             <div className="field">
               <label htmlFor={`owner-${candidate.candidate_id}`}>Owner</label>
@@ -206,6 +237,7 @@ export default function CandidateCard({ candidate, participants, reviewer, onApp
             onClick={() =>
               run(async () => {
                 const changes = {};
+                if (confirmIt) changes.classification = "confirmed";
                 if (ownerId) changes.owner_participant_id = ownerId;
                 if (dueDate) changes.due_date = dueDate;
                 await onEdit(candidate.candidate_id, changes);

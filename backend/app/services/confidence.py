@@ -38,8 +38,18 @@ def compute_confidence(
     owner_method: OwnerResolutionMethod,
     date_method: DateResolutionMethod,
     date_was_claimed: bool,
+    human_confirmed: bool = False,
 ) -> float:
-    extraction = min(max(extraction_confidence, 0.0), 1.0)
+    """
+    ``human_confirmed`` replaces the extraction component outright.
+
+    Without this the system had a dead end: a reviewer could correct a
+    vague item's classification, owner AND date, and the model's original
+    low score would still hold it under the threshold. Someone who was in
+    the room knows better than the extractor did, and refusing to let them
+    say so is not caution -- it is just being unhelpful.
+    """
+    extraction = 1.0 if human_confirmed else min(max(extraction_confidence, 0.0), 1.0)
     owner = _OWNER_COMPONENT.get(owner_method, 0.0)
 
     if not date_was_claimed:

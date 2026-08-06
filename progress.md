@@ -16,7 +16,7 @@ a Calendar invite, a cross-meeting memory entry and a notification record
 The original Nexvi.Meets prototype tree has been fully absorbed and removed;
 everything worth keeping now lives in the live codebase with tests.
 
-Verification: `bash scripts/verify.sh` exits 0; **432 tests pass** with no
+Verification: `bash scripts/verify.sh` exits 0; **447 tests pass** with no
 network access and no credentials; the frontend builds clean.
 
 ## Active feature
@@ -41,7 +41,7 @@ normalization** · **F024 Calendar** · **F025 cross-meeting memory** ·
 ```
 bash init.sh                        -> exit 0, "Initialization complete."
 bash scripts/verify.sh              -> exit 0, "all checks passed"
-cd backend && pytest -q tests       -> 432 passed
+cd backend && pytest -q tests       -> 447 passed
 cd frontend && npm run build        -> built, no errors
 ```
 
@@ -184,6 +184,45 @@ Audit result: 7 agents, 17 tools (exactly 4 side-effecting), all four
 side effects firing and independently idempotent, 13 audit stages
 recorded, cross-meeting memory recalling, live sessions producing
 distinct ids and reviewable candidates after the call. 399 -> 432 tests.
+
+### 2026-08-06 — Session 8 (human override; the gate had a dead end)
+
+Reported: vague group statements ("Everyone should finish by the
+weekend", "Priya and Arjun should complete their tasks") were all blocked
+as `suggestion`, with no way forward. The request was to loosen the gate.
+
+The gate's verdict was *correct* -- nobody individually committed -- but
+the product was still failing the user, in a way worth recording:
+
+**There was no path from "blocked" to "approved".** `EditRequest` had no
+`classification` field, so a reviewer who knew Arjun really took the item
+could not say so. Worse, even fixing owner AND date left the score at
+0.70 against a 0.75 threshold, because the model's original 0.40 still
+dominated the blend. A reviewer could do everything right and stay
+blocked. That is a dead end, not caution.
+
+Fixed by adding a human override rather than weakening the gate:
+
+- `EditRequest.classification` lets a reviewer correct the model's
+  reading, in both directions (confirm a suggestion, or downgrade an
+  over-eager `confirmed`).
+- `ResolvedItem.human_confirmed` records that a person vouched for it,
+  and `compute_confidence` lets that *replace* the extraction component
+  entirely. Someone who was in the room outranks the extractor's guess.
+- Audited as `human_override: true` with the reviewer's name.
+
+**The six rules are untouched.** Confirming alone does not approve
+anything: an item still needs an owner, a resolved date, evidence, no
+contradiction, and a passing threshold. Reclassifying to `cancelled`
+still blocks. Tests assert both directions, including that a cancelled
+item stays unapprovable.
+
+UI: blocked items now read "Needs your input before anything can be
+created" with a note that the item is captured either way, plus a
+checkbox to confirm a commitment. They were reading as failures when
+they are really captured notes awaiting a decision.
+
+439 -> 447 tests.
 
 ## Session log
 

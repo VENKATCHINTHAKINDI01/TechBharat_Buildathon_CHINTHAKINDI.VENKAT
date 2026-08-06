@@ -84,6 +84,12 @@ export async function rejectCandidate(candidateId, reviewer, reason) {
   return data;
 }
 
+/**
+ * Edit the item itself. Passing `classification` is the reviewer
+ * overruling the model's reading — recorded as a human override, and it
+ * lifts the confidence score because someone who was in the room knows
+ * better than the extractor did.
+ */
 export async function editCandidate(candidateId, reviewer, changes) {
   try {
     const { data } = await client.patch(`/review/candidates/${candidateId}`, {
