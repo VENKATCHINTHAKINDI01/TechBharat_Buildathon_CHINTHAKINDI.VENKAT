@@ -26,6 +26,36 @@ export function pickMimeType() {
   return MIME_CANDIDATES.find((m) => MediaRecorder.isTypeSupported(m)) || "audio/webm";
 }
 
+/**
+ * Tab-audio capture is a Chromium feature. Firefox has no equivalent and
+ * Safari's support is too limited to rely on, so detect up front rather
+ * than letting someone discover it mid-demo.
+ */
+export function tabAudioSupport() {
+  if (typeof navigator === "undefined") return { supported: false, browser: "unknown" };
+  const ua = navigator.userAgent;
+  const isEdge = /Edg\//.test(ua);
+  const isChrome = /Chrome\//.test(ua) && !/OPR\//.test(ua);
+  const isFirefox = /Firefox\//.test(ua);
+  const isSafari = /Safari\//.test(ua) && !/Chrome\//.test(ua);
+
+  if (isEdge) return { supported: true, browser: "Edge" };
+  if (isChrome) return { supported: true, browser: "Chrome" };
+  if (isFirefox)
+    return {
+      supported: false,
+      browser: "Firefox",
+      reason: "Firefox cannot capture tab audio. Use Chrome or Edge to hear the other participants.",
+    };
+  if (isSafari)
+    return {
+      supported: false,
+      browser: "Safari",
+      reason: "Safari's tab-audio support is too limited to rely on. Use Chrome or Edge.",
+    };
+  return { supported: Boolean(navigator.mediaDevices?.getDisplayMedia), browser: "this browser" };
+}
+
 export function isCaptureSupported() {
   return Boolean(
     typeof navigator !== "undefined" &&
@@ -157,8 +187,9 @@ export async function captureMicrophone() {
  * we only ever wanted the sound.
  */
 export async function captureTabAudio() {
-  if (!navigator.mediaDevices?.getDisplayMedia) {
-    throw new Error("This browser cannot capture tab audio. Use Chrome or Edge.");
+  const support = tabAudioSupport();
+  if (!support.supported) {
+    throw new Error(support.reason || "This browser cannot capture tab audio. Use Chrome or Edge.");
   }
 
   let display;
@@ -173,7 +204,8 @@ export async function captureTabAudio() {
     });
   } catch (err) {
     throw new Error(
-      `Tab audio capture was cancelled (${err.name}). Pick the meeting tab and tick "Also share tab audio".`
+      `Tab audio capture was cancelled (${err.name}). Choose the "Chrome Tab" option — ` +
+        'not "Entire Screen" — pick your meeting tab, and tick "Also share tab audio".'
     );
   }
 
@@ -181,8 +213,10 @@ export async function captureTabAudio() {
   if (audioTracks.length === 0) {
     display.getTracks().forEach((t) => t.stop());
     throw new Error(
-      'No audio came through. Re-share and make sure "Also share tab audio" is ticked — ' +
-        "without it the browser sends video only, and nobody else in the call will be heard."
+      'No audio came through. The "Also share tab audio" tickbox only appears when you pick ' +
+        'the "Chrome Tab" option — it is NOT offered for "Entire Screen" or "Window". ' +
+        "Re-share, choose the tab with your meeting, and tick it before clicking Share. " +
+        "Without it the browser sends video only and nobody else will be heard."
     );
   }
 

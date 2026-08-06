@@ -5,6 +5,7 @@ import {
   captureMicrophone,
   captureTabAudio,
   isCaptureSupported,
+  tabAudioSupport,
 } from "../lib/audioCapture";
 
 /**
@@ -36,6 +37,7 @@ export default function LivePanel({ onFinished }) {
   const [engines, setEngines] = useState({});
   const [tracks, setTracks] = useState({ mic: false, remote: false });
 
+  const browser = tabAudioSupport();
   const socketRef = useRef(null);
   const recordersRef = useRef([]);
   const feedRef = useRef(null);
@@ -253,12 +255,30 @@ export default function LivePanel({ onFinished }) {
             Start capturing
           </button>
         </div>
-        {captureTab && (
-          <p className="muted" style={{ marginTop: 10 }}>
-            Your browser will ask which tab to share — pick the Meet/Zoom tab and{" "}
-            <strong>tick “Also share tab audio”</strong>. Without that tick the browser sends video
-            only and nobody else will be heard.
-          </p>
+        {captureTab && browser.supported && (
+          <div className="notice" style={{ marginTop: 12 }}>
+            <strong>When the share dialog opens:</strong>
+            <ol style={{ margin: "6px 0 0", paddingLeft: 20 }}>
+              <li>
+                Choose the <strong>“{browser.browser} Tab”</strong> option — not “Entire Screen”
+                or “Window”.
+              </li>
+              <li>Pick the tab with your Meet/Zoom call.</li>
+              <li>
+                Tick <strong>“Also share tab audio”</strong> at the bottom, then click Share.
+              </li>
+            </ol>
+            <p className="muted" style={{ margin: "8px 0 0" }}>
+              That tickbox only appears for a tab. Without it the browser sends video only and
+              nobody but you will be heard.
+            </p>
+          </div>
+        )}
+
+        {captureTab && !browser.supported && (
+          <div className="error" style={{ marginTop: 12 }}>
+            {browser.reason} You can still capture your own microphone, or type lines manually.
+          </div>
         )}
       </section>
     );

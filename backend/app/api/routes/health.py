@@ -21,19 +21,60 @@ async def health() -> dict:
     }
 
 
+async def _probe_mongo(settings) -> dict:
+    """Actually ping MongoDB.
+
+    Configuration and reachability are different failures, and confusing
+    them wastes real time: a set MONGO_URI that cannot connect (Atlas IP
+    allowlist, bad password, no network) looks identical to a working one
+    until the first write. This says which it is, with the reason.
+    """
+    if not settings.mongo_uri:
+        return {"configured": False, "connected": False, "detail": "MONGO_URI is not set"}
+
+    try:
+        from motor.motor_asyncio import AsyncIOMotorClient
+
+        client = AsyncIOMotorClient(settings.mongo_uri, serverSelectionTimeoutMS=3000)
+        try:
+            await client.admin.command("ping")
+            return {"configured": True, "connected": True, "detail": "ping ok"}
+        finally:
+            client.close()
+    except Exception as exc:  # noqa: BLE001
+        reason = str(exc)
+        hint = ""
+        lowered = reason.lower()
+        if "ssl handshake" in lowered or "serverselectiontimeout" in lowered:
+            hint = (
+                " Most likely this machine's IP is not allowed in Atlas -> Network Access. "
+                "Add your current IP (curl -s https://api.ipify.org)."
+            )
+        elif "auth" in lowered:
+            hint = " The username or password in MONGO_URI looks wrong."
+        return {
+            "configured": True,
+            "connected": False,
+            "detail": f"{type(exc).__name__}: {reason[:300]}{hint}",
+        }
+
+
 @router.get("/readiness")
 async def readiness() -> dict:
-    """Readiness: reports which real integrations are configured.
+    """Readiness: what is configured, and whether the database answers.
 
-    Reports configuration, not reachability -- an unreachable Mongo shows
-    up as a loud failure on the first real request rather than being
-    silently swallowed here.
+    The Mongo probe is a real ping with a short timeout. Everything else
+    reports configuration only -- an unreachable GitHub or Groq surfaces
+    as a loud, actionable failure at the point of use.
     """
     settings = get_settings()
     import os
 
+    mongo = await _probe_mongo(settings)
+
     return {
-        "status": "ok",
+        "status": "ok" if mongo["connected"] or not mongo["configured"] else "degraded",
+        "mongo": mongo,
         "integrations": {
             "mongo": bool(settings.mongo_uri),
             "groq": settings.groq_enabled,

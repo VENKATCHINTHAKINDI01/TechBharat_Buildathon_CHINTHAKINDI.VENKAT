@@ -137,12 +137,34 @@ async def live_session(
                 )
                 session.acknowledge_consent(message.get("consent_note"))
 
-                await repository.create_meeting(
-                    meeting_id=meeting_id,
-                    title=message.get("title") or "Live meeting",
-                    meeting_date=meeting_date.isoformat(),
-                    participants=participants,
-                )
+                # A database outage is an operator problem, not a crash.
+                # Without this the whole websocket dies on a driver
+                # exception and the UI shows "Live session failed" with no
+                # hint that the real cause is an IP allowlist.
+                try:
+                    await repository.create_meeting(
+                        meeting_id=meeting_id,
+                        title=message.get("title") or "Live meeting",
+                        meeting_date=meeting_date.isoformat(),
+                        participants=participants,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    logger.error("Could not create the live meeting: %s", exc)
+                    session = None
+                    await websocket.send_json(
+                        {
+                            "type": "error",
+                            "code": "storage_unavailable",
+                            "error": (
+                                "Could not reach the database, so the meeting cannot be "
+                                "recorded. If this is MongoDB Atlas, the most likely cause "
+                                "is that this machine's IP is not in Network Access. "
+                                f"Details: {exc}"
+                            ),
+                        }
+                    )
+                    continue
+
                 audit = AuditLogger(repository, meeting_id)
                 await audit.record(
                     AuditStage.live,

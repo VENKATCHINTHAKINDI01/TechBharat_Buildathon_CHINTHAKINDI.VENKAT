@@ -292,3 +292,42 @@ def test_manual_text_entry_still_works_without_audio(client):
 
     assert snapshot["candidates"]
     assert snapshot["candidates"][0]["owner_name"] == "Rohit"
+
+
+# --- infrastructure failure ------------------------------------------------
+
+
+def test_a_database_outage_reports_cleanly_instead_of_crashing(client, repository):
+    """An Atlas IP allowlist block used to kill the whole websocket with a
+    driver traceback, which told the operator nothing about the cause."""
+
+    async def explode(**kwargs):
+        raise RuntimeError(
+            "SSL handshake failed: connection closed (ServerSelectionTimeoutError)"
+        )
+
+    repository.create_meeting = explode
+
+    with client.websocket_connect("/live") as ws:
+        error = _start(ws)
+
+    assert error["type"] == "error"
+    assert error["code"] == "storage_unavailable"
+    assert "Network Access" in error["error"]
+
+
+def test_the_session_does_not_continue_after_a_storage_failure(client, repository):
+    async def explode(**kwargs):
+        raise RuntimeError("mongo unreachable")
+
+    repository.create_meeting = explode
+
+    with client.websocket_connect("/live") as ws:
+        _start(ws)
+        # No session exists, so the next message must be told to start over
+        # rather than operating on a half-built session.
+        _audio(ws, "mic", 0)
+        follow_up = ws.receive_json()
+
+    assert follow_up["type"] == "error"
+    assert "start" in follow_up["error"].lower()
