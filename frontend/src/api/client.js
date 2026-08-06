@@ -4,15 +4,25 @@ import axios from "axios";
 // frontend never needs to know the backend's host in development.
 const client = axios.create({ baseURL: "/api" });
 
+/**
+ * Surface what actually went wrong.
+ *
+ * The API returns the real upstream error in `detail.error` — a GitHub
+ * 403, a Mongo timeout — and this used to drop it, showing only the
+ * generic message. That sent people hunting through server logs for
+ * something the response already contained.
+ */
 function unwrapError(error) {
   const detail = error?.response?.data?.detail;
   if (typeof detail === "string") return new Error(detail);
-  if (detail?.message) {
-    const err = new Error(detail.message);
+  if (detail?.message || detail?.error) {
+    const err = new Error(detail.message || detail.error);
     err.reasons = detail.reasons || [];
+    err.upstream = detail.error || null;
     return err;
   }
-  return error;
+  if (error?.message) return error;
+  return new Error("Request failed for an unknown reason.");
 }
 
 export async function getReadiness() {

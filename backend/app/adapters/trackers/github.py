@@ -7,10 +7,51 @@ a library.
 """
 from __future__ import annotations
 
+import logging
+
 import httpx
 
 from app.adapters.trackers.base import CreatedIssue, IssuePayload, IssueTrackerError
 from app.core.config import Settings, get_settings
+
+logger = logging.getLogger("nexvi_meets.github")
+
+
+def explain_github_failure(status: int, body: str, repo: str) -> str:
+    """Turn a GitHub status code into something actionable.
+
+    A bare "422 Unprocessable Entity" tells an operator nothing. These are
+    the failures that actually happen when wiring up a sandbox repo, and
+    each one has a different fix.
+    """
+    hints = {
+        401: (
+            "GITHUB_TOKEN is invalid or expired. Generate a new one at "
+            "github.com/settings/tokens."
+        ),
+        403: (
+            f"The token is valid but not allowed to create issues in {repo}. "
+            "A fine-grained token needs Repository permissions -> Issues: "
+            "Read and write, AND the repo must be listed under its "
+            "Repository access."
+        ),
+        404: (
+            f"{repo} was not found. Either it does not exist, it is private and "
+            "the token cannot see it, or the name is wrong -- GITHUB_REPO must "
+            'be "owner/repo" exactly as it appears in the URL.'
+        ),
+        410: (
+            f"Issues are disabled on {repo}. Enable them in Settings -> "
+            "General -> Features -> Issues."
+        ),
+        422: (
+            "GitHub rejected the issue content. The usual cause is an assignee "
+            "who is not a collaborator on the repo, or a label the token may "
+            "not create."
+        ),
+    }
+    hint = hints.get(status, "")
+    return f"GitHub returned {status} for {repo}. {hint} Response: {body[:300]}"
 
 
 class GitHubIssueTracker:
@@ -46,10 +87,16 @@ class GitHubIssueTracker:
             raise IssueTrackerError(f"GitHub request failed: {exc}") from exc
 
         if response.status_code not in (200, 201):
-            raise IssueTrackerError(
-                f"GitHub returned {response.status_code} creating an issue in "
-                f"{self._repo}: {response.text[:400]}"
+            message = explain_github_failure(response.status_code, response.text, self._repo)
+            # Log the full body: the API response is truncated for the UI,
+            # but an operator debugging this wants everything.
+            logger.error(
+                "GitHub issue creation failed (%s) for %s: %s",
+                response.status_code,
+                self._repo,
+                response.text[:2000],
             )
+            raise IssueTrackerError(message)
 
         data = response.json()
         return CreatedIssue(number=data["number"], url=data["html_url"])

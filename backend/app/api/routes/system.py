@@ -75,3 +75,74 @@ async def search_memory(
             for record, score in hits
         ],
     }
+
+
+@router.get("/github/check")
+async def github_check(settings: Settings = Depends(deps.get_app_settings)) -> dict:
+    """Preflight the GitHub integration without creating anything.
+
+    Reads the repo and inspects the token's own permissions, so a
+    misconfiguration is discovered before a reviewer approves something
+    and watches it fail. Same reasoning as the Mongo probe on /readiness:
+    "configured" and "actually works" are different states, and confusing
+    them wastes real time.
+    """
+    import httpx
+
+    if not settings.github_token or not settings.github_repo:
+        return {
+            "ok": False,
+            "reason": "GITHUB_TOKEN and GITHUB_REPO must both be set in backend/.env.",
+        }
+
+    url = f"{settings.github_api_base}/repos/{settings.github_repo}"
+    headers = {
+        "Authorization": f"Bearer {settings.github_token}",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.get(url, headers=headers)
+    except httpx.HTTPError as exc:
+        return {"ok": False, "reason": f"Could not reach GitHub: {exc}"}
+
+    if response.status_code != 200:
+        from app.adapters.trackers.github import explain_github_failure
+
+        return {
+            "ok": False,
+            "status": response.status_code,
+            "repo": settings.github_repo,
+            "reason": explain_github_failure(
+                response.status_code, response.text, settings.github_repo
+            ),
+        }
+
+    repo = response.json()
+    permissions = repo.get("permissions", {})
+    has_issues = repo.get("has_issues", False)
+    can_push = permissions.get("push", False)
+
+    problems = []
+    if not has_issues:
+        problems.append(
+            f"Issues are disabled on {settings.github_repo}. "
+            "Enable them in Settings -> General -> Features -> Issues."
+        )
+    if not can_push:
+        problems.append(
+            "The token can read this repo but has no write access, so it "
+            "cannot create issues. A fine-grained token needs "
+            "Repository permissions -> Issues: Read and write."
+        )
+
+    return {
+        "ok": not problems,
+        "repo": repo.get("full_name"),
+        "private": repo.get("private"),
+        "has_issues": has_issues,
+        "permissions": permissions,
+        "reason": " ".join(problems) if problems else "Ready to create issues.",
+    }

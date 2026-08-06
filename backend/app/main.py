@@ -44,11 +44,14 @@ def create_app() -> FastAPI:
         """A failed side effect is reported as a failure, never silently
         swallowed or reported as success. The audit event was already
         written by the approval service before this handler ran."""
+        # Lead with what actually went wrong. "The tracker rejected the
+        # request" alone sent an operator hunting through server logs for
+        # an error the API already had in hand.
         return JSONResponse(
             status_code=502,
             content={
                 "detail": {
-                    "message": "The issue tracker rejected the request. Nothing was created.",
+                    "message": f"Nothing was created. {exc}",
                     "error": str(exc),
                 }
             },

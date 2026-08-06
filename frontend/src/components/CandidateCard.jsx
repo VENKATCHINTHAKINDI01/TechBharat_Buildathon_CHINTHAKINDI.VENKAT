@@ -36,7 +36,12 @@ export default function CandidateCard({ candidate, participants, reviewer, onApp
     try {
       await fn();
     } catch (err) {
-      setError(err.reasons?.length ? `${err.message} ${err.reasons.join("; ")}` : err.message);
+      setError({
+        message: err.reasons?.length
+          ? `${err.message} ${err.reasons.join("; ")}`
+          : err.message,
+        upstream: err.upstream && err.upstream !== err.message ? err.upstream : null,
+      });
     } finally {
       setBusy(false);
     }
@@ -80,7 +85,16 @@ export default function CandidateCard({ candidate, participants, reviewer, onApp
         </div>
       )}
 
-      {error && <div className="error" style={{ marginTop: 12 }}>{error}</div>}
+      {error && (
+        <div className="error" style={{ marginTop: 12 }}>
+          {error.message}
+          {error.upstream && (
+            <div className="muted" style={{ marginTop: 6, wordBreak: "break-word" }}>
+              {error.upstream}
+            </div>
+          )}
+        </div>
+      )}
 
       {candidate.issue_url && (
         <p style={{ marginTop: 12 }}>

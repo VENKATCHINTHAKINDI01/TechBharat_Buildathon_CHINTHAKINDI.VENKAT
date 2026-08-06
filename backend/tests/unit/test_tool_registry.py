@@ -117,3 +117,64 @@ def test_catalog_marks_exactly_the_expected_tools_as_side_effecting():
     ]
     for spec in registry.specs():
         assert spec.description, f"{spec.name} has no description"
+
+
+# --- GitHub failure translation --------------------------------------------
+#
+# A bare "GitHub returned 403" sent an operator hunting through server
+# logs. Each status has a different fix, and the message should say which.
+
+
+def test_github_failures_explain_the_actual_fix():
+    from app.adapters.trackers.github import explain_github_failure
+
+    assert "invalid or expired" in explain_github_failure(401, "", "org/repo")
+    assert "Issues: Read and write" in explain_github_failure(403, "", "org/repo")
+    assert "not found" in explain_github_failure(404, "", "org/repo")
+    assert "Issues are disabled" in explain_github_failure(410, "", "org/repo")
+    assert "assignee" in explain_github_failure(422, "", "org/repo")
+
+
+def test_the_repo_name_appears_so_a_typo_is_obvious():
+    from app.adapters.trackers.github import explain_github_failure
+
+    message = explain_github_failure(404, "Not Found", "VENKAT/typo_repo")
+    assert "VENKAT/typo_repo" in message
+    assert "owner/repo" in message
+
+
+def test_an_unmapped_status_still_includes_the_response_body():
+    from app.adapters.trackers.github import explain_github_failure
+
+    message = explain_github_failure(500, "upstream exploded", "org/repo")
+    assert "500" in message
+    assert "upstream exploded" in message
+
+
+async def test_a_github_rejection_surfaces_its_reason_through_the_api(monkeypatch):
+    """The 502 body must lead with the cause, not a generic sentence."""
+    import httpx
+
+    from app.adapters.trackers.github import GitHubIssueTracker
+    from app.adapters.trackers.base import IssuePayload, IssueTrackerError
+    from app.core.config import Settings
+
+    settings = Settings(github_token="t", github_repo="org/repo")
+    tracker = GitHubIssueTracker(settings)
+
+    async def fake_post(*args, **kwargs):
+        return httpx.Response(403, text='{"message":"Resource not accessible"}')
+
+    class FakeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        post = staticmethod(fake_post)
+
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **kw: FakeClient())
+
+    with pytest.raises(IssueTrackerError, match="Issues: Read and write"):
+        await tracker.create_issue(IssuePayload(title="t", body="b"))
