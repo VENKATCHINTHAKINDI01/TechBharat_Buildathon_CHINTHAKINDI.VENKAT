@@ -159,15 +159,52 @@ destroyed every citation the gate depends on.
 
 ---
 
-## Live meeting mode
+## Live meeting mode — real audio
 
-`ws://localhost:8000/live` streams transcript lines, keeps a rolling
-window, and surfaces commitments *during* the meeting. The same commitment
-heard twice updates one candidate rather than creating two.
+Join your Meet/Zoom call, open Nexvi.Meets, and hit **Start capturing**.
+Commitments appear on screen while people are still talking.
 
-**Live mode never acts.** It produces candidates and gate verdicts;
-approval remains a separate, human, post-meeting step. Every payload says
-so explicitly.
+**Two tracks, captured in the browser:**
+
+| Track | Source | Attribution |
+|---|---|---|
+| `mic` | `getUserMedia` | **you**, with certainty |
+| `remote` | `getDisplayMedia` on the meeting tab | "Remote speaker" until tagged |
+
+Browsers only expose tab audio through the screen-share picker, and only
+if you tick **"Also share tab audio"** — there is no way to grab it
+silently, by design. Without that tick you will capture only yourself.
+
+**Transcription.** Each track is recorded as short, self-contained audio
+files and transcribed by Whisper Large v3 Turbo on Groq (~216x realtime).
+When Whisper reports Indic speech, the same chunk is re-transcribed by
+Sarvam Saarika, whose code-mixed accuracy is materially better — the
+"Monday varaku share chesthava?" case. A chunk that fails to transcribe
+is **dropped with a warning, never guessed at**: six lost seconds are
+recoverable, invented words would poison the evidence quotes the safety
+gate depends on.
+
+**Speaker attribution, honestly.** The mic is unambiguous. The tab may
+hold three voices, so remote speech stays unattributed and you tag it in
+one click as the meeting runs — tagging one segment tags the whole
+cluster. At the end, Sarvam's batch diarization groups the remote track
+into `SPEAKER_00`/`SPEAKER_01`, mapped back onto the existing transcript
+**by time overlap** so the text you already saw never changes. A segment
+with no overlapping turn is left unassigned rather than given the nearest
+speaker.
+
+Diarization yields anonymous clusters, not names. Turning `SPEAKER_01`
+into "Priya" is a human judgement, and an unconfirmed cluster resolves to
+no owner — so the gate blocks the item. That is the correct outcome.
+
+**Consent is required.** The session refuses to start until you confirm
+everyone knows the meeting is being captured, and the acknowledgement is
+written to the audit log. Recording people without their knowledge is
+unlawful in many jurisdictions.
+
+**Live mode never acts.** It produces candidates and gate verdicts.
+Approval remains a separate, human, post-meeting step, and a typed-line
+fallback exists so a demo never hinges on venue audio.
 
 ---
 

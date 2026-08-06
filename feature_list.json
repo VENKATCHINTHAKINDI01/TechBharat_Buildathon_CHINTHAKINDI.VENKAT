@@ -275,6 +275,33 @@
       ]
     },
     {
+      "id": "F028",
+      "priority": "P2",
+      "name": "Live audio capture (mic + meeting tab) with consent gate",
+      "status": "done",
+      "depends_on": [
+        "F027"
+      ]
+    },
+    {
+      "id": "F029",
+      "priority": "P2",
+      "name": "Speech-to-text: Whisper primary, Sarvam for code-switched speech",
+      "status": "done",
+      "depends_on": [
+        "F028"
+      ]
+    },
+    {
+      "id": "F030",
+      "priority": "P2",
+      "name": "Speaker attribution: track-based live, diarization refine at end",
+      "status": "done",
+      "depends_on": [
+        "F029"
+      ]
+    },
+    {
       "id": "F019",
       "priority": "P0",
       "name": "Evaluation report and demo freeze",

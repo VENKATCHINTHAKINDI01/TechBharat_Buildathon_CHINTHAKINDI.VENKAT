@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 from app.adapters.calendar.memory import InMemoryCalendarClient
 from app.adapters.memory.memory import InMemoryMemoryStore
 from app.adapters.repositories.memory import InMemoryRepository
+from app.adapters.transcription import ScriptedTranscriber
 from app.adapters.trackers.memory import InMemoryIssueTracker
 from app.api import deps
 from app.tools.catalog import build_registry
@@ -40,6 +41,31 @@ def memory_store() -> InMemoryMemoryStore:
 
 
 @pytest.fixture
+def transcriber() -> ScriptedTranscriber:
+    """Scripted STT so the live path is tested without a network call."""
+    return ScriptedTranscriber()
+
+
+class _StubDiarizer:
+    name = "stub"
+
+    def __init__(self) -> None:
+        self.turns = []
+        self.calls = 0
+
+    async def diarize(self, audio: bytes, mime: str):
+        from app.services.diarization import DiarizationResult
+
+        self.calls += 1
+        return DiarizationResult(turns=list(self.turns), engine=self.name)
+
+
+@pytest.fixture
+def diarizer() -> _StubDiarizer:
+    return _StubDiarizer()
+
+
+@pytest.fixture
 def settings() -> Settings:
     # No credentials: the reference extractor is used, so tests never
     # touch Groq or GitHub.
@@ -50,12 +76,14 @@ def settings() -> Settings:
 
 
 @pytest.fixture
-def client(repository, tracker, calendar, memory_store, settings) -> TestClient:
+def client(repository, tracker, calendar, memory_store, transcriber, diarizer, settings) -> TestClient:
     app.dependency_overrides[deps.get_repository] = lambda: repository
     app.dependency_overrides[deps.get_tracker] = lambda: tracker
     app.dependency_overrides[deps.get_calendar] = lambda: calendar
     app.dependency_overrides[deps.get_memory_store] = lambda: memory_store
     app.dependency_overrides[deps.get_tool_registry] = lambda: build_registry()
+    app.dependency_overrides[deps.get_transcriber] = lambda: transcriber
+    app.dependency_overrides[deps.get_diarizer] = lambda: diarizer
     app.dependency_overrides[deps.get_app_settings] = lambda: settings
     with TestClient(app) as c:
         yield c

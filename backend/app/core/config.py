@@ -69,7 +69,24 @@ class Settings(BaseSettings):
     # --- Agent orchestration: "inhouse" | "langgraph" ---
     agent_runtime: str = "inhouse"
 
+    # --- Live meeting mode: speech to text ---
+    # Groq hosts Whisper Large v3 Turbo at ~216x realtime, which is what
+    # lets a file endpoint drive a live experience.
+    groq_transcription_model: str = "whisper-large-v3-turbo"
+    # ISO-639-1 hint. Leave empty to let Whisper auto-detect, which is
+    # required for code-mixed speech.
+    live_asr_language: str = ""
+    sarvam_api_base: str = "https://api.sarvam.ai"
+    sarvam_stt_model: str = "saarika:v2.5"
+    sarvam_language_code: str = "unknown"   # "unknown" = auto-detect
+    # Seconds of audio per chunk. Lower = snappier, more requests.
+    live_chunk_seconds: int = 6
+    # Keep buffered audio for the end-of-meeting diarization pass.
+    live_keep_audio: bool = True
+    live_max_buffered_mb: int = 200
+
     # --- Live meeting mode ---
+    live_diarization_enabled: bool = True
     live_window_seconds: int = 40
     live_min_new_segments: int = 2
 
@@ -108,6 +125,11 @@ class Settings(BaseSettings):
     @property
     def groq_enabled(self) -> bool:
         return bool(self.groq_api_key)
+
+    @property
+    def live_audio_enabled(self) -> bool:
+        """Live audio capture needs at least one speech-to-text engine."""
+        return bool(self.groq_api_key or self.sarvam_api_key)
 
     @property
     def sarvam_enabled(self) -> bool:

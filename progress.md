@@ -16,7 +16,7 @@ a Calendar invite, a cross-meeting memory entry and a notification record
 The original Nexvi.Meets prototype tree has been fully absorbed and removed;
 everything worth keeping now lives in the live codebase with tests.
 
-Verification: `bash scripts/verify.sh` exits 0; **353 tests pass** with no
+Verification: `bash scripts/verify.sh` exits 0; **399 tests pass** with no
 network access and no credentials; the frontend builds clean.
 
 ## Active feature
@@ -41,7 +41,7 @@ normalization** · **F024 Calendar** · **F025 cross-meeting memory** ·
 ```
 bash init.sh                        -> exit 0, "Initialization complete."
 bash scripts/verify.sh              -> exit 0, "all checks passed"
-cd backend && pytest -q tests       -> 353 passed
+cd backend && pytest -q tests       -> 399 passed
 cd frontend && npm run build        -> built, no errors
 ```
 
@@ -85,8 +85,8 @@ manufacture a perfect score.
 ## Known limitations — read before demoing
 
 - **No live run against real Mongo, Groq, GitHub or Calendar has been
-  performed in this environment.** All 353 tests use in-memory adapters
-  and a stubbed Groq client. The real adapters are written and typed but
+  performed in this environment.** All 399 tests use in-memory adapters,
+  a stubbed Groq client, and a scripted transcriber. The real adapters are written and typed but
   their live behaviour is unverified. This is the highest-risk gap.
 - **The evaluation numbers are on fixtures we wrote *and* labelled.** Not
   a gold transcript. The deterministic extractor is pattern-based; on
@@ -103,11 +103,50 @@ manufacture a perfect score.
   fallback path is what the tests cover.
 - Cross-meeting carry-forward surfaces matches but does not yet mark items
   completed or flag twice-slipped commitments (brief stretch goal, partial).
-- Audio transcription and diarization are not implemented (both permitted
-  by the brief's FAQ).
+- **Live audio is untested against real speech.** The transcription
+  adapters, the two-track capture, and the diarization mapping are all
+  covered by tests with scripted/mocked audio, but no real microphone or
+  meeting tab has run through them here. Chunk size, echo between the mic
+  and tab tracks, and Whisper's behaviour on six-second slices of natural
+  conversation are all unmeasured.
+- Sarvam's diarization response shape is handled defensively but was
+  never observed live; a schema mismatch degrades to "no refinement".
+- Mic and tab tracks may both pick up your own voice if you use speakers
+  rather than headphones, producing duplicate segments. Use headphones.
 - Latency against "under 3 minutes for a 45-minute meeting" is unmeasured.
 - No lint/type-check step; the repo has no ruff/mypy config.
 - The frontend has no automated tests beyond the build.
+
+### 2026-08-05 — Session 6 (live mode re-engineered around real audio)
+
+Live mode previously accepted typed lines. It now captures actual audio.
+
+- **F028 capture.** Browser records the mic and the shared meeting tab as
+  two tracks. The non-obvious part: a `MediaRecorder`'s 2nd+ WebM blobs
+  carry no container header, so slicing one recording yields chunks
+  nothing can decode. The frontend cycles a fresh recorder per interval
+  instead, making every chunk a complete file — which is also what lets a
+  plain file-upload STT endpoint drive a live experience.
+- **F029 transcription.** `Transcriber` protocol with Groq Whisper primary
+  (~216x realtime, accepts browser WebM directly), Sarvam Saarika
+  re-transcribing Indic speech, and a `NullTranscriber` that refuses
+  rather than returning empty text that would look like a silent meeting.
+- **F030 attribution.** Track-based live (mic = certain, tab = unknown),
+  one-click tagging that propagates across a speaker cluster, and an
+  end-of-meeting Sarvam diarization pass mapped back by time overlap.
+  A segment with no overlapping turn stays unassigned; diarization never
+  overwrites a human confirmation.
+- **Consent gate.** The session refuses audio until consent is
+  acknowledged, and the acknowledgement is audited. Not requested, but
+  recording people without their knowledge is unlawful in many places and
+  the brief says so explicitly.
+
+Test count 353 -> 399. One implementation trap worth recording: the first
+full-suite run after wiring the new dependencies **hung**, because the
+live websocket tests were constructing the real Groq transcriber and
+calling the network with the developer's actual key. Fixed by overriding
+`get_transcriber`/`get_diarizer` in the integration conftest — the same
+mistake would have hit anyone adding a new adapter dependency.
 
 ## Session log
 

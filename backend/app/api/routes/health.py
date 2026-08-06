@@ -42,10 +42,23 @@ async def readiness() -> dict:
             "calendar": os.path.exists(settings.google_credentials_path)
             or os.path.exists(settings.google_token_path),
             "memory": True,  # ChromaDB is local; no credential to miss
+            "live_audio": settings.live_audio_enabled,
         },
         "extractor": "groq" if settings.groq_enabled else "reference",
         "normalizer": "sarvam" if settings.sarvam_enabled else "none",
         "agent_runtime": settings.agent_runtime,
+        "live": {
+            "audio_enabled": settings.live_audio_enabled,
+            "transcriber": (
+                "auto (whisper + sarvam)"
+                if settings.groq_api_key and settings.sarvam_api_key
+                else "whisper" if settings.groq_api_key
+                else "sarvam" if settings.sarvam_api_key
+                else "none"
+            ),
+            "diarization": settings.sarvam_enabled and settings.live_diarization_enabled,
+            "chunk_seconds": settings.live_chunk_seconds,
+        },
         "enabled_side_effects": settings.enabled_side_effects,
         "confidence_threshold": settings.confidence_threshold,
     }

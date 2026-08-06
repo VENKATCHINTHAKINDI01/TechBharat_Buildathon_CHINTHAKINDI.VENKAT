@@ -71,3 +71,23 @@ def get_memory_store():
     from app.adapters.memory.chroma import ChromaMemoryStore
 
     return ChromaMemoryStore(get_settings())
+
+
+def get_transcriber():
+    """Speech-to-text stack for live mode.
+
+    Whisper via Groq when GROQ_API_KEY is set, refined by Sarvam for
+    Indic speech when SARVAM_API_KEY is set. With neither, returns a
+    transcriber that refuses -- live audio reports as unavailable rather
+    than producing an empty transcript that looks like a silent meeting.
+    """
+    from app.adapters.transcription import build_transcriber
+
+    return build_transcriber(get_settings())
+
+
+def get_diarizer():
+    """End-of-meeting speaker refinement. NullDiarizer when unconfigured."""
+    from app.services.diarization import build_diarizer
+
+    return build_diarizer(get_settings())

@@ -36,6 +36,13 @@ def test_readiness_reports_integration_configuration():
         "sarvam",
         "calendar",
         "memory",
+        "live_audio",
+    }
+    assert set(body["live"]) == {
+        "audio_enabled",
+        "transcriber",
+        "diarization",
+        "chunk_seconds",
     }
     assert body["extractor"] in ("groq", "reference")
     assert body["normalizer"] in ("sarvam", "none")
