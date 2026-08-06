@@ -20,6 +20,7 @@ from app.adapters.transcription.base import (
     TranscriptionResult,
     TranscriptSpan,
 )
+from app.adapters.transcription.convert import convert_to_wav
 from app.adapters.transcription.languages import normalize_language_code
 from app.core.config import Settings, get_settings
 
@@ -37,9 +38,15 @@ class SarvamTranscriber:
         if not chunk.data:
             raise TranscriptionError("empty audio chunk")
 
+        # Sarvam rejects audio/webm;codecs=opus (browser MediaRecorder native
+        # format). Convert to WAV (PCM 16kHz mono) before sending.
+        audio_bytes, audio_mime = convert_to_wav(chunk.data, chunk.mime)
+        # Derive a sensible filename for the converted audio
+        filename = chunk.filename if audio_mime == chunk.mime else chunk.filename.rsplit(".", 1)[0] + ".wav"
+
         url = f"{self._settings.sarvam_api_base}/speech-to-text"
         headers = {"api-subscription-key": self._settings.sarvam_api_key}
-        files = {"file": (chunk.filename, chunk.data, chunk.mime)}
+        files = {"file": (filename, audio_bytes, audio_mime)}
         data = {
             "model": self._settings.sarvam_stt_model,
             # "unknown" asks Saarika to auto-detect, which is what makes

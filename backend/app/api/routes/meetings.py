@@ -213,6 +213,84 @@ async def meeting_transcript(meeting_id: str, repository=Depends(deps.get_reposi
     return {"meeting_id": meeting_id, "segment_count": len(segments), "segments": segments}
 
 
+@router.delete("/{meeting_id}", status_code=200)
+async def delete_meeting(
+    meeting_id: str,
+    repository=Depends(deps.get_repository),
+) -> dict:
+    """Hard-delete all data for one meeting.
+
+    Removes the meeting and every related document (items, review decisions,
+    audit events, issue records, calendar events, notifications, agent run,
+    transcript segments). The GitHub issue that was already created on the
+    remote tracker is NOT deleted — it is an external side effect that has
+    left this system, and the audit principle requires that remote artefacts
+    are not silently wiped.
+
+    An audit event is written *before* deletion so that even after the
+    meeting is gone, the Atlas audit oplog retains a tombstone of when and
+    what was deleted.
+    """
+    from datetime import datetime, timezone
+    from app.domain.models import AuditStage
+    from app.services.audit import AuditLogger
+
+    meeting = await repository.get_meeting(meeting_id)
+    if not meeting:
+        raise HTTPException(404, "Meeting not found")
+
+    # Write tombstone audit event first
+    audit = AuditLogger(repository, meeting_id)
+    await audit.record(
+        AuditStage.review,
+        {
+            "outcome": "meeting_deleted",
+            "title": meeting.get("title", ""),
+            "deleted_at": datetime.now(timezone.utc).isoformat(),
+            "note": "All local data deleted. Remote GitHub issues are NOT deleted.",
+        },
+    )
+
+    db = repository._db
+    deleted = {}
+    for coll, field in [
+        ("nm_meetings", "meeting_id"),
+        ("nm_meeting_records", "meeting_id"),
+        ("nm_items", "meeting_id"),
+        ("nm_review", None),          # keyed by candidate_id, handled below
+        ("nm_audit", "meeting_id"),
+        ("nm_issues", "meeting_id"),
+        ("nm_calendar", "meeting_id"),
+        ("nm_notifications", "meeting_id"),
+        ("nm_agent_runs", "meeting_id"),
+        ("nm_segments", "meeting_id"),
+    ]:
+        if field == "meeting_id":
+            result = await db[coll].delete_many({"meeting_id": meeting_id})
+        elif coll == "nm_review":
+            # Review decisions are keyed by candidate_id — collect them first
+            candidate_ids = [
+                d["candidate_id"]
+                async for d in db.nm_items.find({"meeting_id": meeting_id}, {"candidate_id": 1})
+            ]
+            if candidate_ids:
+                result = await db.nm_review.delete_many(
+                    {"candidate_id": {"$in": candidate_ids}}
+                )
+            else:
+                result = type("R", (), {"deleted_count": 0})()
+        else:
+            result = type("R", (), {"deleted_count": 0})()
+        deleted[coll] = result.deleted_count
+
+    return {
+        "meeting_id": meeting_id,
+        "title": meeting.get("title", ""),
+        "deleted": deleted,
+        "message": "Meeting and all local data deleted. Remote GitHub issues are preserved.",
+    }
+
+
 @router.get("/{meeting_id}", response_model=MeetingDetailResponse)
 async def get_meeting(
     meeting_id: str,

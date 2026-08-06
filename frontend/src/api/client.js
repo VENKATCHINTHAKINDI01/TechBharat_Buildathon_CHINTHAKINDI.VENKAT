@@ -35,6 +35,15 @@ export async function listMeetings() {
   return data;
 }
 
+export async function deleteMeeting(meetingId) {
+  try {
+    const { data } = await client.delete(`/meetings/${meetingId}`);
+    return data;
+  } catch (error) {
+    throw unwrapError(error);
+  }
+}
+
 export async function getReport(meetingId) {
   const { data } = await client.get(`/meetings/${meetingId}/report`);
   return data;

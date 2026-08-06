@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { listMeetings } from "../api/client";
+import { deleteMeeting, listMeetings } from "../api/client";
 
 /**
  * Every meeting this workspace has seen, newest first.
@@ -10,12 +10,30 @@ import { listMeetings } from "../api/client";
 export default function MeetingHistory({ onOpenReview, onOpenReport }) {
   const [meetings, setMeetings] = useState(null);
   const [error, setError] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
+  const [confirmId, setConfirmId] = useState(null);
 
-  useEffect(() => {
+  const load = () =>
     listMeetings()
       .then(setMeetings)
       .catch((err) => setError(err.message));
+
+  useEffect(() => {
+    load();
   }, []);
+
+  async function handleDelete(meetingId) {
+    setDeletingId(meetingId);
+    try {
+      await deleteMeeting(meetingId);
+      setConfirmId(null);
+      await load();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setDeletingId(null);
+    }
+  }
 
   if (error) return <div className="error">{error}</div>;
   if (!meetings) return <p className="muted">Loading meetings…</p>;
@@ -37,6 +55,9 @@ export default function MeetingHistory({ onOpenReview, onOpenReport }) {
       <h2>Past meetings ({meetings.length})</h2>
       {meetings.map((m) => {
         const pending = Math.max(0, (m.action_items || 0) - (m.reviewed || 0));
+        const isDeleting = deletingId === m.meeting_id;
+        const isConfirming = confirmId === m.meeting_id;
+
         return (
           <div className="meeting-row" key={m.meeting_id}>
             <div className="grow">
@@ -56,13 +77,63 @@ export default function MeetingHistory({ onOpenReview, onOpenReport }) {
                 )}
                 {pending > 0 && <span className="pill warn">{pending} awaiting review</span>}
               </div>
+
+              {/* Inline delete confirmation */}
+              {isConfirming && (
+                <div
+                  style={{
+                    marginTop: 10,
+                    padding: "10px 14px",
+                    background: "rgba(239,68,68,0.08)",
+                    borderRadius: 8,
+                    border: "1px solid rgba(239,68,68,0.3)",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <span style={{ fontSize: 13, color: "var(--text)" }}>
+                    ⚠️ Delete <strong>{m.title}</strong>? All local data will be removed.
+                    GitHub issues already created are <strong>preserved</strong>.
+                  </span>
+                  <button
+                    className="danger"
+                    style={{ padding: "4px 14px", fontSize: 13 }}
+                    disabled={isDeleting}
+                    onClick={() => handleDelete(m.meeting_id)}
+                  >
+                    {isDeleting ? "Deleting…" : "Yes, delete"}
+                  </button>
+                  <button
+                    className="ghost"
+                    style={{ padding: "4px 14px", fontSize: 13 }}
+                    onClick={() => setConfirmId(null)}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
             </div>
-            <button className="ghost" onClick={() => onOpenReport(m.meeting_id)}>
-              Report
-            </button>
-            <button className="primary" onClick={() => onOpenReview(m.meeting_id)}>
-              {pending > 0 ? "Review & approve" : "Open"}
-            </button>
+
+            <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+              <button className="ghost" onClick={() => onOpenReport(m.meeting_id)}>
+                Report
+              </button>
+              <button className="primary" onClick={() => onOpenReview(m.meeting_id)}>
+                {pending > 0 ? "Review & approve" : "Open"}
+              </button>
+              {!isConfirming && (
+                <button
+                  className="danger"
+                  style={{ padding: "6px 12px", fontSize: 13 }}
+                  title="Delete this meeting and all its data"
+                  onClick={() => setConfirmId(m.meeting_id)}
+                >
+                  Delete
+                </button>
+              )}
+            </div>
           </div>
         );
       })}

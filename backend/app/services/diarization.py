@@ -26,6 +26,7 @@ from typing import Optional, Protocol, runtime_checkable
 
 import httpx
 
+from app.adapters.transcription.convert import convert_to_wav
 from app.adapters.transcription.languages import normalize_language_code
 from app.core.config import Settings, get_settings
 
@@ -138,9 +139,13 @@ class SarvamDiarizer:
         if not audio:
             return DiarizationResult(engine=self.name, error="no audio buffered")
 
+        # Sarvam rejects audio/webm;codecs=opus — convert to WAV first.
+        audio_bytes, audio_mime = convert_to_wav(audio, mime)
+        filename = "remote-track.webm" if audio_mime == mime else "remote-track.wav"
+
         url = f"{self._settings.sarvam_api_base}/speech-to-text"
         headers = {"api-subscription-key": self._settings.sarvam_api_key}
-        files = {"file": ("remote-track.webm", audio, mime)}
+        files = {"file": (filename, audio_bytes, audio_mime)}
         data = {
             "model": self._settings.sarvam_stt_model,
             "language_code": normalize_language_code(self._settings.sarvam_language_code),
