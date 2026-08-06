@@ -17,7 +17,41 @@ from app.core.config import Settings, get_settings
 logger = logging.getLogger("nexvi_meets.github")
 
 
-def explain_github_failure(status: int, body: str, repo: str) -> str:
+def describe_token(token: str) -> str:
+    """Which kind of credential this is.
+
+    Fine-grained and classic tokens are fixed on different settings pages
+    with different controls, so naming the type turns "check your token
+    permissions" into a single link the operator can follow.
+    """
+    if token.startswith("github_pat_"):
+        return "fine-grained"
+    if token.startswith("ghp_"):
+        return "classic"
+    if token.startswith("ghs_"):
+        return "app"
+    return "unknown"
+
+
+def _permission_hint(repo: str, token_kind: str) -> str:
+    if token_kind == "fine-grained":
+        return (
+            f"This is a fine-grained token. Open github.com/settings/personal-access-tokens, "
+            f"edit it, and check BOTH: (1) Repository access includes {repo}, and "
+            f"(2) Repository permissions -> Issues is set to 'Read and write'. "
+            "Issues defaults to 'No access', which is almost always the cause."
+        )
+    if token_kind == "classic":
+        return (
+            "This is a classic token. Open github.com/settings/tokens, edit it, and tick "
+            "the 'repo' scope (or 'public_repo' if the repository is public)."
+        )
+    return (
+        f"The token is not allowed to create issues in {repo}. Grant it issue write access."
+    )
+
+
+def explain_github_failure(status: int, body: str, repo: str, token: str = "") -> str:
     """Turn a GitHub status code into something actionable.
 
     A bare "422 Unprocessable Entity" tells an operator nothing. These are
@@ -31,9 +65,7 @@ def explain_github_failure(status: int, body: str, repo: str) -> str:
         ),
         403: (
             f"The token is valid but not allowed to create issues in {repo}. "
-            "A fine-grained token needs Repository permissions -> Issues: "
-            "Read and write, AND the repo must be listed under its "
-            "Repository access."
+            + _permission_hint(repo, describe_token(token))
         ),
         404: (
             f"{repo} was not found. Either it does not exist, it is private and "
@@ -87,7 +119,9 @@ class GitHubIssueTracker:
             raise IssueTrackerError(f"GitHub request failed: {exc}") from exc
 
         if response.status_code not in (200, 201):
-            message = explain_github_failure(response.status_code, response.text, self._repo)
+            message = explain_github_failure(
+                response.status_code, response.text, self._repo, self._token
+            )
             # Log the full body: the API response is truncated for the UI,
             # but an operator debugging this wants everything.
             logger.error(

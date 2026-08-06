@@ -116,7 +116,7 @@ async def github_check(settings: Settings = Depends(deps.get_app_settings)) -> d
             "status": response.status_code,
             "repo": settings.github_repo,
             "reason": explain_github_failure(
-                response.status_code, response.text, settings.github_repo
+                response.status_code, response.text, settings.github_repo, settings.github_token
             ),
         }
 
@@ -132,10 +132,11 @@ async def github_check(settings: Settings = Depends(deps.get_app_settings)) -> d
             "Enable them in Settings -> General -> Features -> Issues."
         )
     if not can_push:
+        from app.adapters.trackers.github import _permission_hint, describe_token
+
         problems.append(
-            "The token can read this repo but has no write access, so it "
-            "cannot create issues. A fine-grained token needs "
-            "Repository permissions -> Issues: Read and write."
+            "The token can read this repo but cannot write to it. "
+            + _permission_hint(settings.github_repo, describe_token(settings.github_token))
         )
 
     return {

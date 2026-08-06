@@ -129,7 +129,7 @@ def test_github_failures_explain_the_actual_fix():
     from app.adapters.trackers.github import explain_github_failure
 
     assert "invalid or expired" in explain_github_failure(401, "", "org/repo")
-    assert "Issues: Read and write" in explain_github_failure(403, "", "org/repo")
+    assert "Read and write" in explain_github_failure(403, "", "org/repo", "github_pat_x")
     assert "not found" in explain_github_failure(404, "", "org/repo")
     assert "Issues are disabled" in explain_github_failure(410, "", "org/repo")
     assert "assignee" in explain_github_failure(422, "", "org/repo")
@@ -159,7 +159,8 @@ async def test_a_github_rejection_surfaces_its_reason_through_the_api(monkeypatc
     from app.adapters.trackers.base import IssuePayload, IssueTrackerError
     from app.core.config import Settings
 
-    settings = Settings(github_token="t", github_repo="org/repo")
+    # A realistic fine-grained token, so the hint names the right settings page.
+    settings = Settings(github_token="github_pat_11ABCDEF", github_repo="org/repo")
     tracker = GitHubIssueTracker(settings)
 
     async def fake_post(*args, **kwargs):
@@ -176,5 +177,23 @@ async def test_a_github_rejection_surfaces_its_reason_through_the_api(monkeypatc
 
     monkeypatch.setattr(httpx, "AsyncClient", lambda **kw: FakeClient())
 
-    with pytest.raises(IssueTrackerError, match="Issues: Read and write"):
+    with pytest.raises(IssueTrackerError, match="Read and write"):
         await tracker.create_issue(IssuePayload(title="t", body="b"))
+
+
+def test_the_hint_matches_the_token_type():
+    """Fine-grained and classic tokens are fixed on different pages with
+    different controls; naming the type saves a wrong-page detour."""
+    from app.adapters.trackers.github import describe_token, explain_github_failure
+
+    assert describe_token("github_pat_abc") == "fine-grained"
+    assert describe_token("ghp_abc") == "classic"
+    assert describe_token("weird") == "unknown"
+
+    fine = explain_github_failure(403, "", "org/repo", "github_pat_abc")
+    assert "personal-access-tokens" in fine
+    assert "Issues is set to 'Read and write'" in fine
+
+    classic = explain_github_failure(403, "", "org/repo", "ghp_abc")
+    assert "settings/tokens" in classic
+    assert "'repo' scope" in classic
