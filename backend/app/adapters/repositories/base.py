@@ -11,9 +11,12 @@ from __future__ import annotations
 from typing import Optional, Protocol, runtime_checkable
 
 from app.domain.models import (
+    AgentRun,
     AuditEvent,
+    CalendarEventRecord,
     GitHubIssueRecord,
     MeetingRecord,
+    NotificationRecord,
     Participant,
     ResolvedItem,
     ReviewDecision,
@@ -61,3 +64,22 @@ class Repository(Protocol):
     async def find_issue_by_dedupe_key(self, dedupe_key: str) -> Optional[GitHubIssueRecord]: ...
 
     async def list_issue_records(self, meeting_id: str) -> list[GitHubIssueRecord]: ...
+
+    # --- calendar events (second gated side effect) ---
+    async def save_calendar_event(self, record: CalendarEventRecord) -> None: ...
+
+    async def find_calendar_event_by_dedupe_key(
+        self, dedupe_key: str
+    ) -> Optional[CalendarEventRecord]: ...
+
+    async def list_calendar_events(self, meeting_id: str) -> list[CalendarEventRecord]: ...
+
+    # --- notifications ---
+    async def save_notification(self, record: NotificationRecord) -> None: ...
+
+    async def list_notifications(self, meeting_id: str) -> list[NotificationRecord]: ...
+
+    # --- agent runs (orchestration trace) ---
+    async def save_agent_run(self, run: AgentRun) -> None: ...
+
+    async def get_agent_run(self, meeting_id: str) -> Optional[AgentRun]: ...

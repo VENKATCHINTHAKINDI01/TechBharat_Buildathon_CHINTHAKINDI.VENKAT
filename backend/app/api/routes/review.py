@@ -21,8 +21,8 @@ from app.api.schemas import (
     RejectRequest,
 )
 from app.core.config import Settings
-from app.domain.models import AuditStage, Participant
-from app.services.approval import ApprovalRefused, approve_and_create_issue, reject_candidate
+from app.domain.models import AuditStage, Participant, SideEffect
+from app.services.approval import ApprovalRefused, approve_and_execute, reject_candidate
 from app.services.audit import AuditLogger
 from app.services.payload import build_issue_payload
 
@@ -38,12 +38,34 @@ async def _load(repository, candidate_id: str):
     return item, meeting or {}, participants
 
 
+def _requested_effects(names: list[str] | None) -> tuple[SideEffect, ...]:
+    """Which side effects this approval should fire.
+
+    Defaults to GitHub only. A reviewer opting into calendar/memory/
+    notification is an explicit, per-approval choice -- approving a
+    commitment must never quietly fan out to more external systems than
+    the person expected.
+    """
+    if not names:
+        return (SideEffect.github_issue,)
+    try:
+        return tuple(SideEffect(n) for n in names)
+    except ValueError as exc:
+        raise HTTPException(
+            400,
+            f"Unknown side effect requested. Valid: {[e.value for e in SideEffect]} ({exc})",
+        )
+
+
 @router.post("/candidates/{candidate_id}/approve", response_model=ApproveResponse)
 async def approve(
     candidate_id: str,
     body: ApproveRequest,
     repository=Depends(deps.get_repository),
     tracker=Depends(deps.get_tracker),
+    calendar=Depends(deps.get_calendar),
+    memory_store=Depends(deps.get_memory_store),
+    registry=Depends(deps.get_tool_registry),
     settings: Settings = Depends(deps.get_app_settings),
 ) -> ApproveResponse:
     item, meeting, participants = await _load(repository, candidate_id)
@@ -54,20 +76,24 @@ async def approve(
     payload = body.payload or build_issue_payload(item, participants, meeting.get("title", ""))
 
     try:
-        result = await approve_and_create_issue(
+        result = await approve_and_execute(
             repository=repository,
-            tracker=tracker,
+            registry=registry,
             item=item,
             payload=payload,
             reviewer=body.reviewer,
             confidence_threshold=settings.confidence_threshold,
             edited=body.payload is not None,
             participants=participants,
+            meeting_title=meeting.get("title", ""),
+            meeting_date=meeting.get("meeting_date", ""),
+            effects=_requested_effects(body.effects),
+            tracker=tracker,
+            calendar=calendar,
+            memory_store=memory_store,
         )
     except ApprovalRefused as exc:
-        raise HTTPException(
-            422, detail={"message": str(exc), "reasons": exc.reasons}
-        )
+        raise HTTPException(422, detail={"message": str(exc), "reasons": exc.reasons})
 
     return ApproveResponse(
         candidate_id=candidate_id,
@@ -76,6 +102,10 @@ async def approve(
         issue_number=result.issue_number,
         issue_url=result.issue_url,
         dedupe_key=result.dedupe_key,
+        effects=[
+            {"effect": e.effect, "status": e.status, "detail": e.detail, "error": e.error}
+            for e in result.effects
+        ],
     )
 
 
@@ -130,7 +160,12 @@ async def edit(
 
         update["date_resolution_method"] = DateResolutionMethod.absolute
 
-    edited_item = item.model_copy(update=update)
+    # Recompute the composite confidence: a reviewer who just fixed an
+    # unresolvable owner must not stay blocked by a score that was low
+    # *because* the owner was unresolvable.
+    from app.services.resolvers.combine import recompute_confidence
+
+    edited_item = recompute_confidence(item.model_copy(update=update))
     await repository.update_item(edited_item)
 
     audit = AuditLogger(repository, item.meeting_id)

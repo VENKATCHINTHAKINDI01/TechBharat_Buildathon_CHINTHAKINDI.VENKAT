@@ -23,9 +23,12 @@ from pymongo.errors import DuplicateKeyError
 
 from app.core.config import get_settings
 from app.domain.models import (
+    AgentRun,
     AuditEvent,
+    CalendarEventRecord,
     GitHubIssueRecord,
     MeetingRecord,
+    NotificationRecord,
     Participant,
     ResolvedItem,
     ReviewDecision,
@@ -67,6 +70,11 @@ class MongoRepository:
         await self._db.cg_review.create_index("candidate_id", unique=True)
         await self._db.cg_meetings.create_index("meeting_id", unique=True)
         await self._db.cg_meeting_records.create_index("meeting_id", unique=True)
+        # Same unique-index guarantee as issues: the database, not app
+        # logic, is what stops a duplicate calendar invite.
+        await self._db.cg_calendar.create_index("dedupe_key", unique=True)
+        await self._db.cg_notifications.create_index("meeting_id")
+        await self._db.cg_agent_runs.create_index("meeting_id", unique=True)
 
     # --- meetings ---
     async def create_meeting(
@@ -166,3 +174,44 @@ class MongoRepository:
             GitHubIssueRecord.model_validate(_strip_id(d))
             async for d in self._db.cg_issues.find({"meeting_id": meeting_id})
         ]
+
+    # --- calendar events ---
+    async def save_calendar_event(self, record: CalendarEventRecord) -> None:
+        try:
+            await self._db.cg_calendar.insert_one(record.model_dump(mode="json"))
+        except DuplicateKeyError:
+            pass  # first write wins; see save_issue_record
+
+    async def find_calendar_event_by_dedupe_key(
+        self, dedupe_key: str
+    ) -> Optional[CalendarEventRecord]:
+        doc = _strip_id(await self._db.cg_calendar.find_one({"dedupe_key": dedupe_key}))
+        return CalendarEventRecord.model_validate(doc) if doc else None
+
+    async def list_calendar_events(self, meeting_id: str) -> list[CalendarEventRecord]:
+        return [
+            CalendarEventRecord.model_validate(_strip_id(d))
+            async for d in self._db.cg_calendar.find({"meeting_id": meeting_id})
+        ]
+
+    # --- notifications ---
+    async def save_notification(self, record: NotificationRecord) -> None:
+        await self._db.cg_notifications.insert_one(record.model_dump(mode="json"))
+
+    async def list_notifications(self, meeting_id: str) -> list[NotificationRecord]:
+        return [
+            NotificationRecord.model_validate(_strip_id(d))
+            async for d in self._db.cg_notifications.find({"meeting_id": meeting_id})
+        ]
+
+    # --- agent runs ---
+    async def save_agent_run(self, run: AgentRun) -> None:
+        await self._db.cg_agent_runs.update_one(
+            {"meeting_id": run.meeting_id},
+            {"$set": run.model_dump(mode="json")},
+            upsert=True,
+        )
+
+    async def get_agent_run(self, meeting_id: str) -> Optional[AgentRun]:
+        doc = _strip_id(await self._db.cg_agent_runs.find_one({"meeting_id": meeting_id}))
+        return AgentRun.model_validate(doc) if doc else None

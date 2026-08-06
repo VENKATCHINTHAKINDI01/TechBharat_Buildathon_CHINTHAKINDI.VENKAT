@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.adapters.trackers.base import IssueTrackerError
-from app.api.routes import health, meetings, review
+from app.api.routes import health, live, meetings, review, system
 from app.core.config import MissingCredentialError, get_settings
 
 logger = logging.getLogger("commitguard")
@@ -36,6 +36,8 @@ def create_app() -> FastAPI:
     application.include_router(health.router)
     application.include_router(meetings.router)
     application.include_router(review.router)
+    application.include_router(system.router)
+    application.include_router(live.router)
 
     @application.exception_handler(IssueTrackerError)
     async def _tracker_failed(_request: Request, exc: IssueTrackerError) -> JSONResponse:

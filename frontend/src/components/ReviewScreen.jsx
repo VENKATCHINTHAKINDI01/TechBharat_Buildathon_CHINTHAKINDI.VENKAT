@@ -3,6 +3,7 @@ import { approveCandidate, editCandidate, getMeeting, rejectCandidate } from "..
 import CandidateCard from "./CandidateCard";
 import MeetingRecord from "./MeetingRecord";
 import AuditLog from "./AuditLog";
+import AgentTrace from "./AgentTrace";
 
 export default function ReviewScreen({ meetingId, uploadSummary, onBack }) {
   const [detail, setDetail] = useState(null);
@@ -80,9 +81,10 @@ export default function ReviewScreen({ meetingId, uploadSummary, onBack }) {
             candidate={candidate}
             participants={participants}
             reviewer={reviewer}
-            onApprove={async (id) => {
-              await approveCandidate(id, reviewer);
+            onApprove={async (id, effects) => {
+              const result = await approveCandidate(id, reviewer, effects);
               await refresh();
+              return result;
             }}
             onReject={async (id) => {
               await rejectCandidate(id, reviewer, "rejected in review");
@@ -96,6 +98,7 @@ export default function ReviewScreen({ meetingId, uploadSummary, onBack }) {
         ))}
       </section>
 
+      <AgentTrace meetingId={meetingId} />
       <AuditLog meetingId={meetingId} refreshKey={refreshKey} />
     </>
   );

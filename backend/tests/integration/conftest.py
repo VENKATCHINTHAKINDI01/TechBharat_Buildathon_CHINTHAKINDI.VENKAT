@@ -9,9 +9,12 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
+from app.adapters.calendar.memory import InMemoryCalendarClient
+from app.adapters.memory.memory import InMemoryMemoryStore
 from app.adapters.repositories.memory import InMemoryRepository
 from app.adapters.trackers.memory import InMemoryIssueTracker
 from app.api import deps
+from app.tools.catalog import build_registry
 from app.core.config import Settings
 from app.main import app
 
@@ -27,6 +30,16 @@ def tracker() -> InMemoryIssueTracker:
 
 
 @pytest.fixture
+def calendar() -> InMemoryCalendarClient:
+    return InMemoryCalendarClient()
+
+
+@pytest.fixture
+def memory_store() -> InMemoryMemoryStore:
+    return InMemoryMemoryStore()
+
+
+@pytest.fixture
 def settings() -> Settings:
     # No credentials: the reference extractor is used, so tests never
     # touch Groq or GitHub.
@@ -37,9 +50,12 @@ def settings() -> Settings:
 
 
 @pytest.fixture
-def client(repository, tracker, settings) -> TestClient:
+def client(repository, tracker, calendar, memory_store, settings) -> TestClient:
     app.dependency_overrides[deps.get_repository] = lambda: repository
     app.dependency_overrides[deps.get_tracker] = lambda: tracker
+    app.dependency_overrides[deps.get_calendar] = lambda: calendar
+    app.dependency_overrides[deps.get_memory_store] = lambda: memory_store
+    app.dependency_overrides[deps.get_tool_registry] = lambda: build_registry()
     app.dependency_overrides[deps.get_app_settings] = lambda: settings
     with TestClient(app) as c:
         yield c

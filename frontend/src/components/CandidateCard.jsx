@@ -9,8 +9,17 @@ import { useState } from "react";
  * payload that would be sent to GitHub is shown verbatim -- the brief
  * requires a person to see the exact payload before approval.
  */
+const ALL_EFFECTS = [
+  ["github_issue", "GitHub issue"],
+  ["calendar_invite", "Calendar invite"],
+  ["memory_index", "Cross-meeting memory"],
+  ["notification", "Notify owner"],
+];
+
 export default function CandidateCard({ candidate, participants, reviewer, onApprove, onReject, onEdit }) {
   const [open, setOpen] = useState(false);
+  const [effects, setEffects] = useState(["github_issue"]);
+  const [results, setResults] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [editing, setEditing] = useState(false);
@@ -86,11 +95,15 @@ export default function CandidateCard({ candidate, participants, reviewer, onApp
         </button>
         <button
           className="primary"
-          disabled={busy || !eligible || decided}
+          disabled={busy || !eligible || decided || effects.length === 0}
           title={eligible ? "" : "Blocked by the safety gate"}
-          onClick={() => run(() => onApprove(candidate.candidate_id))}
+          onClick={() =>
+            run(async () => {
+              setResults(await onApprove(candidate.candidate_id, effects));
+            })
+          }
         >
-          Approve &amp; create issue
+          Approve &amp; run {effects.length} action{effects.length === 1 ? "" : "s"}
         </button>
         <button
           className="danger"
@@ -100,6 +113,61 @@ export default function CandidateCard({ candidate, participants, reviewer, onApp
           Reject
         </button>
       </div>
+
+      {!decided && eligible && (
+        <div className="drawer">
+          <strong style={{ fontSize: 13 }}>Actions to take on approval</strong>
+          <p className="muted" style={{ margin: "4px 0 8px" }}>
+            Each is gated identically. Approving never fans out to more systems than you tick.
+          </p>
+          <div className="meta">
+            {ALL_EFFECTS.map(([value, label]) => (
+              <label
+                key={value}
+                className="pill"
+                style={{ cursor: "pointer", gap: 6 }}
+              >
+                <input
+                  type="checkbox"
+                  style={{ width: "auto", margin: 0 }}
+                  checked={effects.includes(value)}
+                  onChange={(e) =>
+                    setEffects((prev) =>
+                      e.target.checked ? [...prev, value] : prev.filter((x) => x !== value)
+                    )
+                  }
+                />
+                {label}
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {results?.effects?.length > 0 && (
+        <div className="drawer">
+          <strong style={{ fontSize: 13 }}>Result</strong>
+          <div className="meta" style={{ marginTop: 6 }}>
+            {results.effects.map((e) => (
+              <span
+                key={e.effect}
+                className={`pill ${
+                  e.status === "created"
+                    ? "ok"
+                    : e.status === "duplicate_suppressed"
+                    ? "accent"
+                    : e.status === "failed"
+                    ? "bad"
+                    : "warn"
+                }`}
+                title={e.error || ""}
+              >
+                {e.effect}: {e.status.replace("_", " ")}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       {editing && (
         <div className="drawer">

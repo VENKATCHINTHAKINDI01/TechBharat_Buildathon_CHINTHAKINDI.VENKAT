@@ -2,6 +2,7 @@
 fastapi>=0.111.0
 uvicorn[standard]>=0.29.0
 python-multipart>=0.0.9
+websockets>=12.0            # live meeting mode
 
 # --- Config / validation ---
 pydantic>=2.7.0
@@ -12,12 +13,28 @@ python-dotenv>=1.0.0
 motor>=3.4.0
 pymongo>=4.7.0
 
-# --- LLM extraction (primary; deterministic fallback needs none of this) ---
+# --- LLM extraction (primary; the deterministic fallback needs none of this) ---
 groq>=0.9.0
 
 # --- Resolution ---
-dateparser>=1.2.0     # relative date resolution (F008)
-rapidfuzz>=3.9.0      # owner name matching (F007)
+dateparser>=1.2.0           # relative date resolution
+rapidfuzz>=3.9.0            # owner name matching
 
-# --- HTTP client (GitHub Issues integration) ---
+# --- HTTP client (GitHub Issues) ---
 httpx>=0.27.0
+
+# --- Cross-meeting memory ---
+chromadb>=0.5.0
+
+# --- Google Calendar (second gated side effect) ---
+google-auth>=2.29.0
+google-auth-oauthlib>=1.2.0
+google-api-python-client>=2.131.0
+
+# --- Optional: agent orchestration runtime (AGENT_RUNTIME=langgraph) ---
+# The in-house orchestrator is the default and needs nothing here.
+langgraph>=0.2.0
+
+# --- Optional: code-switch normalization (English + Telugu/Hindi) ---
+# Without SARVAM_API_KEY the pipeline uses the original text unchanged.
+sarvamai>=0.1.0

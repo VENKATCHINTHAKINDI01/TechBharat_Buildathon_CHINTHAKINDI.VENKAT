@@ -77,6 +77,9 @@ class MeetingDetailResponse(BaseModel):
 class ApproveRequest(BaseModel):
     reviewer: str = "demo_reviewer"
     payload: Optional[IssuePayload] = None  # present => reviewer edited it
+    # Which gated side effects to fire. Defaults to GitHub only; opting
+    # into more is always an explicit per-approval choice.
+    effects: Optional[list[str]] = None
 
 
 class ApproveResponse(BaseModel):
@@ -86,6 +89,7 @@ class ApproveResponse(BaseModel):
     issue_number: Optional[int]
     issue_url: Optional[str]
     dedupe_key: str
+    effects: list[dict] = Field(default_factory=list)
 
 
 class RejectRequest(BaseModel):

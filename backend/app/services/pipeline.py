@@ -1,54 +1,47 @@
-"""End-to-end ingestion pipeline.
+"""Pipeline entry point — assembles the agent graph and runs it.
 
-    transcript file
-      -> parse (F002)            deterministic
-      -> normalize (F003)        deterministic
-      -> extract + validate      Groq if configured, deterministic fallback
-      -> drop unsupported evidence   deterministic citation check
-      -> resolve owner + date (F007, F008)  deterministic
-      -> gate (F010)             deterministic
-      -> meeting record (F011b)  deterministic
-      -> persist + audit (F011)
+This module used to contain the pipeline logic inline. That logic now
+lives in ``app/agents/``, one agent per stage, so the orchestration is
+inspectable and each stage is independently testable. What remains here
+is assembly: build the context (tools, extractors, adapters), pick a
+runtime, run, persist the trace.
 
-Only one stage is non-deterministic, and its output is filtered by
-deterministic code before anything downstream sees it. Every stage writes
-an audit event, so the trail explains not just what was created but what
-was considered and rejected.
+The graph always stops at the human-review interrupt. Nothing downstream
+of it happens without a person, and that is enforced again at the tool
+registry rather than trusted here.
 """
 from __future__ import annotations
 
-import uuid
 from dataclasses import dataclass, field
 from datetime import date
+from typing import Any, Optional
+import uuid
 
+from app.agents.base import AgentContext, PipelineState
+from app.agents.langgraph_runtime import build_runtime
 from app.core.config import Settings, get_settings
-from app.domain.models import (
-    AuditStage,
-    GateDecision,
-    MeetingRecord,
-    Participant,
-    ResolvedItem,
-)
-from app.domain.safety.gate import check_gate
+from app.domain.models import AgentRun, GateDecision, MeetingRecord, Participant, ResolvedItem
 from app.services.audit import AuditLogger
-from app.services.extraction.base import Extractor, ExtractionError, drop_unsupported_evidence
+from app.services.extraction.base import Extractor
 from app.services.extraction.reference import ReferenceExtractor
-from app.services.ingestion.normalization import normalize
-from app.services.ingestion.parser import TranscriptParseError, parse_transcript
-from app.services.meeting_record import synthesize_meeting_record
-from app.services.resolvers.combine import resolve_validated_items
+from app.services.normalization import build_normalizer
+from app.tools.catalog import build_registry
 
 
 @dataclass
 class PipelineOutcome:
     meeting_id: str
-    record: MeetingRecord
+    record: Optional[MeetingRecord]
     items: list[ResolvedItem]
     gate_decisions: dict[str, GateDecision]
     extractor_used: str
-    fallback_reason: str | None = None
+    agent_run: AgentRun
+    normalizer_used: str = "none"
+    fallback_reason: Optional[str] = None
     segments_count: int = 0
+    carried_forward: list = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    error: Optional[str] = None
 
     @property
     def eligible_count(self) -> int:
@@ -59,8 +52,8 @@ def build_extractor(settings: Settings | None = None) -> tuple[Extractor, Extrac
     """Returns (primary, fallback).
 
     Groq is primary whenever a key is configured; the deterministic
-    reference implementation is always the fallback so a provider outage
-    degrades output quality instead of losing the meeting entirely.
+    reference implementation is always the fallback, so a provider outage
+    degrades output quality instead of losing the meeting.
     """
     settings = settings or get_settings()
     fallback = ReferenceExtractor()
@@ -69,6 +62,29 @@ def build_extractor(settings: Settings | None = None) -> tuple[Extractor, Extrac
 
         return GroqExtractor(settings), fallback
     return fallback, fallback
+
+
+def build_context(
+    *,
+    repository,
+    settings: Settings,
+    audit: AuditLogger,
+    extractor: Extractor | None = None,
+    fallback_extractor: Extractor | None = None,
+    normalizer: Any = None,
+    memory_store: Any = None,
+) -> AgentContext:
+    primary, fallback = build_extractor(settings)
+    return AgentContext(
+        tools=build_registry(),
+        repository=repository,
+        settings=settings,
+        audit=audit,
+        extractor=extractor or primary,
+        fallback_extractor=fallback_extractor or fallback,
+        normalizer=normalizer if normalizer is not None else build_normalizer(settings),
+        memory_store=memory_store,
+    )
 
 
 async def run_pipeline(
@@ -82,30 +98,13 @@ async def run_pipeline(
     settings: Settings | None = None,
     extractor: Extractor | None = None,
     fallback_extractor: Extractor | None = None,
+    normalizer: Any = None,
+    memory_store: Any = None,
     meeting_id: str | None = None,
 ) -> PipelineOutcome:
     settings = settings or get_settings()
     meeting_id = meeting_id or uuid.uuid4().hex[:12]
     audit = AuditLogger(repository, meeting_id)
-    warnings: list[str] = []
-
-    # --- ingestion ---
-    try:
-        utterances = parse_transcript(filename, content)
-    except TranscriptParseError as exc:
-        await audit.record(AuditStage.ingestion, {"outcome": "parse_failed", "error": str(exc)})
-        raise
-
-    segments = normalize(utterances, meeting_id=meeting_id)
-    await audit.record(
-        AuditStage.ingestion,
-        {
-            "outcome": "parsed",
-            "filename": filename,
-            "segments": len(segments),
-            "speakers": sorted({s.speaker for s in segments}),
-        },
-    )
 
     await repository.create_meeting(
         meeting_id=meeting_id,
@@ -114,86 +113,40 @@ async def run_pipeline(
         participants=participants,
     )
 
-    # --- extraction + validation ---
-    if extractor is None or fallback_extractor is None:
-        primary, fallback = build_extractor(settings)
-        extractor = extractor or primary
-        fallback_extractor = fallback_extractor or fallback
-
-    extractor_used = getattr(extractor, "name", "unknown")
-    fallback_reason: str | None = None
-    try:
-        validated = extractor.extract(segments, meeting_id)
-    except ExtractionError as exc:
-        fallback_reason = str(exc)
-        extractor_used = getattr(fallback_extractor, "name", "reference")
-        warnings.append(f"Primary extractor failed, used fallback: {exc}")
-        validated = fallback_extractor.extract(segments, meeting_id)
-
-    before = len(validated)
-    validated = drop_unsupported_evidence(validated, segments)
-    dropped = before - len(validated)
-    if dropped:
-        warnings.append(f"{dropped} candidate(s) dropped for unsupported evidence quotes")
-
-    await audit.record(
-        AuditStage.extraction,
-        {
-            "extractor": extractor_used,
-            "fallback_reason": fallback_reason,
-            "candidates": len(validated),
-            "dropped_for_unsupported_evidence": dropped,
-        },
-    )
-    await audit.record(
-        AuditStage.validation,
-        {
-            "classifications": {
-                c: sum(1 for v in validated if v.classification.value == c)
-                for c in sorted({v.classification.value for v in validated})
-            }
-        },
+    ctx = build_context(
+        repository=repository,
+        settings=settings,
+        audit=audit,
+        extractor=extractor,
+        fallback_extractor=fallback_extractor,
+        normalizer=normalizer,
+        memory_store=memory_store,
     )
 
-    # --- resolution ---
-    resolved = resolve_validated_items(validated, participants, meeting_date)
-    await audit.record(
-        AuditStage.resolution,
-        {
-            "owners_resolved": sum(1 for r in resolved if r.owner_participant_id),
-            "owners_unresolved": sum(1 for r in resolved if not r.owner_participant_id),
-            "dates_resolved": sum(1 for r in resolved if r.due_date),
-            "dates_unresolved": sum(1 for r in resolved if not r.due_date),
-        },
+    state = PipelineState(
+        meeting_id=meeting_id,
+        filename=filename,
+        content=content,
+        title=title,
+        meeting_date=meeting_date,
+        participants=participants,
     )
 
-    # --- gate ---
-    gate_decisions: dict[str, GateDecision] = {}
-    for item in resolved:
-        decision = check_gate(item, settings.confidence_threshold)
-        gate_decisions[item.candidate_id] = decision
-        await audit.record(
-            AuditStage.gate,
-            {
-                "eligible": decision.eligible,
-                "reasons": decision.reasons,
-                "context": "pipeline",
-            },
-            candidate_id=item.candidate_id,
-        )
-
-    # --- persist ---
-    await repository.save_items(resolved)
-    record = synthesize_meeting_record(meeting_id, resolved)
-    await repository.save_meeting_record(record)
+    graph = build_runtime(settings)
+    state, run = await graph.run(state, ctx)
+    await repository.save_agent_run(run)
 
     return PipelineOutcome(
         meeting_id=meeting_id,
-        record=record,
-        items=resolved,
-        gate_decisions=gate_decisions,
-        extractor_used=extractor_used,
-        fallback_reason=fallback_reason,
-        segments_count=len(segments),
-        warnings=warnings,
+        record=state.record,
+        items=state.resolved,
+        gate_decisions=state.gate_decisions,
+        extractor_used=state.extractor_used,
+        agent_run=run,
+        normalizer_used=state.normalizer_used,
+        fallback_reason=state.fallback_reason,
+        segments_count=len(state.segments),
+        carried_forward=state.carried_forward,
+        warnings=state.warnings,
+        error=state.error,
     )

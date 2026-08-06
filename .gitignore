@@ -10,6 +10,8 @@
 .vite/
 __pycache__/
 chroma_data/
+credentials.json
 dist/
 node_modules/
+token.json
 venv/

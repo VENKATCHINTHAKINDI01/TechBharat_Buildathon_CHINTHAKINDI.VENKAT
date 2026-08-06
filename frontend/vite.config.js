@@ -13,6 +13,7 @@ export default defineConfig({
       "/api": {
         target: "http://localhost:8000",
         changeOrigin: true,
+        ws: true,  // the live-meeting websocket rides the same prefix
         rewrite: (path) => path.replace(/^\/api/, ""),
       },
     },

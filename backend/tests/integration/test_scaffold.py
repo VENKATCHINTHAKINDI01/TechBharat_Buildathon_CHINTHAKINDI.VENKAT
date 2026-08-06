@@ -29,8 +29,18 @@ def test_readiness_reports_integration_configuration():
     resp = client.get("/readiness")
     assert resp.status_code == 200
     body = resp.json()
-    assert set(body["integrations"]) == {"mongo", "groq", "github"}
+    assert set(body["integrations"]) == {
+        "mongo",
+        "groq",
+        "github",
+        "sarvam",
+        "calendar",
+        "memory",
+    }
     assert body["extractor"] in ("groq", "reference")
+    assert body["normalizer"] in ("sarvam", "none")
+    assert body["agent_runtime"] in ("inhouse", "langgraph")
+    assert isinstance(body["enabled_side_effects"], list)
     assert 0.0 <= body["confidence_threshold"] <= 1.0
 
 
@@ -49,14 +59,28 @@ def test_feature_list_json_is_valid():
             assert dep in known_ids
 
 
-def test_app_does_not_import_legacy_nexvi_modules():
-    """The legacy tree is archived, not imported. If this fails, something
-    reintroduced a dependency on code that has no safety gate."""
+def test_no_legacy_package_remains_importable():
+    """The pre-CommitGuard tree was absorbed and deleted. `app.agents` and
+    `app.tools` are now first-class CommitGuard packages; what must NOT
+    exist is the old ungated Nexvi.Meets code."""
     import app.main  # noqa: F401
 
     leaked = [
         m
         for m in sys.modules
-        if m.startswith(("app.agents", "app.tools", "app.review", "app.roster", "app.db"))
+        if m.startswith(("app.review", "app.roster", "app.db", "app.integrations", "app.websocket"))
     ]
-    assert leaked == [], f"legacy modules imported: {leaked}"
+    assert leaked == [], f"pre-CommitGuard modules imported: {leaked}"
+
+
+def test_side_effecting_tools_are_exactly_the_four_expected():
+    """A new external action must be a deliberate, reviewed addition --
+    not something that appears because someone wrapped a client."""
+    from app.tools import build_registry
+
+    assert build_registry().side_effecting_names == [
+        "calendar_invite",
+        "github_issue",
+        "memory_index",
+        "notification",
+    ]

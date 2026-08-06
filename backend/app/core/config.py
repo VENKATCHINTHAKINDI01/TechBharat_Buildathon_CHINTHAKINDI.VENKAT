@@ -48,6 +48,26 @@ class Settings(BaseSettings):
     github_repo: str = ""  # "owner/repo", must be a sandbox/test repo
     github_api_base: str = "https://api.github.com"
 
+    # --- Sarvam (optional code-switch normalization) ---
+    sarvam_api_key: str = ""
+    sarvam_model: str = "sarvam-translate:v1"
+
+    # --- Google Calendar (second gated side effect) ---
+    google_credentials_path: str = "credentials.json"
+    google_token_path: str = "token.json"
+    google_calendar_id: str = "primary"
+
+    # --- Cross-meeting memory (ChromaDB, local persistent) ---
+    chroma_persist_dir: str = "./chroma_data"
+    memory_similarity_threshold: float = 0.35
+
+    # --- Agent orchestration: "inhouse" | "langgraph" ---
+    agent_runtime: str = "inhouse"
+
+    # --- Live meeting mode ---
+    live_window_seconds: int = 40
+    live_min_new_segments: int = 2
+
     # --- Safety gate ---
     confidence_threshold: float = 0.75
 
@@ -77,6 +97,25 @@ class Settings(BaseSettings):
     @property
     def groq_enabled(self) -> bool:
         return bool(self.groq_api_key)
+
+    @property
+    def sarvam_enabled(self) -> bool:
+        return bool(self.sarvam_api_key)
+
+    @property
+    def enabled_side_effects(self) -> list[str]:
+        """Which gated side effects are actually configured.
+
+        Reported by /readiness so a demo never discovers mid-approval that
+        a credential is missing.
+        """
+        effects = ["github_issue"] if (self.github_token and self.github_repo) else []
+        import os
+
+        if os.path.exists(self.google_credentials_path) or os.path.exists(self.google_token_path):
+            effects.append("calendar_invite")
+        effects.extend(["memory_index", "notification"])
+        return effects
 
 
 @lru_cache

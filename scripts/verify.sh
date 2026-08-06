@@ -41,7 +41,7 @@ print(f"ok: {len(features)} features, {done} done, {len(in_progress)} in_progres
 PY
 
 echo "== verify: required docs exist and are non-empty =="
-for f in README.md AGENTS.md CLAUDE.md progress.md legacy/README.md \
+for f in README.md AGENTS.md CLAUDE.md progress.md \
          docs/product.md docs/architecture.md docs/data-contracts.md \
          docs/acceptance-tests.md docs/demo-script.md docs/maker-checker-loop.md \
          prompts/maker.md prompts/checker.md backend/.env.example; do
@@ -78,11 +78,49 @@ echo "== verify: backend test suite =="
 PYTHONPATH="$(pwd)" $PY -m pytest -q tests || { echo "FAIL: tests failed"; exit 1; }
 cd ..
 
-echo "== verify: legacy tree is archived, not imported =="
-if grep -rn "from legacy\|import legacy" backend/app backend/tests >/dev/null 2>&1; then
-  echo "FAIL: live code imports from legacy/"; exit 1
-fi
-echo "ok"
+echo "== verify: the safety boundary holds structurally =="
+$PY - <<'PY'
+import re
+import sys
+from pathlib import Path
+
+APP = Path("backend/app")
+failures = []
+
+# 1. Extraction and the agents must not import a side-effecting adapter
+#    directly -- they may only reach one through the tool registry.
+for area in ("services/extraction", "agents"):
+    for path in (APP / area).rglob("*.py"):
+        text = path.read_text()
+        for forbidden in ("adapters.trackers", "adapters.calendar"):
+            if forbidden in text:
+                failures.append(f"{path} imports {forbidden} directly")
+
+# 2. Only the approval service may invoke a side-effecting tool.
+SIDE_EFFECTING = ("github_issue", "calendar_invite", "memory_index", "notification")
+ALLOWED = {APP / "services" / "approval.py"}
+pattern = re.compile(r"""invoke\(\s*["'](%s)["']""" % "|".join(SIDE_EFFECTING))
+for path in APP.rglob("*.py"):
+    if path in ALLOWED or path.name == "catalog.py":
+        continue
+    if pattern.search(path.read_text()):
+        failures.append(f"{path} invokes a side-effecting tool outside approval.py")
+
+# 3. The gate must not accept free text.
+gate = (APP / "domain" / "safety" / "gate.py").read_text()
+signature = re.search(r"def check_gate\(([^)]*)\)", gate)
+assert signature, "check_gate signature not found"
+params = [p.split(":")[0].strip() for p in signature.group(1).split(",") if p.strip()]
+if params != ["item", "confidence_threshold"]:
+    failures.append(f"check_gate signature changed: {params}")
+
+if failures:
+    print("FAIL:")
+    for f in failures:
+        print("  -", f)
+    sys.exit(1)
+print("ok: extraction/agents cannot reach adapters; only approval.py fires side effects")
+PY
 
 echo "== verify: frontend =="
 $PY -c "import json; json.load(open('frontend/package.json'))"

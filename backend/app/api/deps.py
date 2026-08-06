@@ -9,11 +9,13 @@ MongoDB repository and the real GitHub tracker, and raise a clear
 """
 from __future__ import annotations
 
+import os
 from functools import lru_cache
 
 from app.adapters.repositories.mongo import MongoRepository
 from app.adapters.trackers.github import GitHubIssueTracker
 from app.core.config import Settings, get_settings
+from app.tools.catalog import build_registry
 
 
 @lru_cache
@@ -38,3 +40,34 @@ def get_tracker():
 
 def get_app_settings() -> Settings:
     return get_settings()
+
+
+def get_tool_registry():
+    """A fresh registry per request so the per-run tool-call trace is not
+    shared between concurrent requests."""
+    return build_registry()
+
+
+def get_calendar():
+    """Google Calendar client, or None when the OAuth client file is absent.
+
+    Returning None (rather than raising) is deliberate: calendar is the
+    *second* side effect. A missing Calendar credential should degrade to
+    "calendar skipped, reported honestly", not block issue creation.
+    """
+    from app.adapters.calendar.google import GoogleCalendarClient
+
+    settings = get_settings()
+    if not (
+        os.path.exists(settings.google_credentials_path)
+        or os.path.exists(settings.google_token_path)
+    ):
+        return None
+    return GoogleCalendarClient(settings)
+
+
+def get_memory_store():
+    """ChromaDB store. Local and persistent -- no credential to miss."""
+    from app.adapters.memory.chroma import ChromaMemoryStore
+
+    return ChromaMemoryStore(get_settings())

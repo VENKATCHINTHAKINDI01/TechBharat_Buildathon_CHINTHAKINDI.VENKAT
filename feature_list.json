@@ -200,6 +200,81 @@
       ]
     },
     {
+      "id": "F020",
+      "priority": "P1",
+      "name": "Tool registry with authorization-enforced side effects",
+      "status": "done",
+      "depends_on": [
+        "F010",
+        "F012"
+      ]
+    },
+    {
+      "id": "F021",
+      "priority": "P1",
+      "name": "Multi-agent orchestration (in-house graph + LangGraph runtime)",
+      "status": "done",
+      "depends_on": [
+        "F020"
+      ]
+    },
+    {
+      "id": "F022",
+      "priority": "P1",
+      "name": "Composite confidence scoring",
+      "status": "done",
+      "depends_on": [
+        "F007",
+        "F008"
+      ]
+    },
+    {
+      "id": "F023",
+      "priority": "P1",
+      "name": "Code-switch normalization with verbatim-evidence preservation",
+      "status": "done",
+      "depends_on": [
+        "F002",
+        "F005"
+      ]
+    },
+    {
+      "id": "F024",
+      "priority": "P2",
+      "name": "Google Calendar invite as a second gated side effect",
+      "status": "done",
+      "depends_on": [
+        "F020"
+      ]
+    },
+    {
+      "id": "F025",
+      "priority": "P2",
+      "name": "Cross-meeting memory (ChromaDB) and carry-forward recall",
+      "status": "done",
+      "depends_on": [
+        "F020"
+      ]
+    },
+    {
+      "id": "F026",
+      "priority": "P2",
+      "name": "Owner notification and reminder records",
+      "status": "done",
+      "depends_on": [
+        "F020"
+      ]
+    },
+    {
+      "id": "F027",
+      "priority": "P2",
+      "name": "Live meeting mode (websocket + rolling window)",
+      "status": "done",
+      "depends_on": [
+        "F021"
+      ]
+    },
+    {
       "id": "F019",
       "priority": "P0",
       "name": "Evaluation report and demo freeze",

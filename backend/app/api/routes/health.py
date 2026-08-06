@@ -30,13 +30,22 @@ async def readiness() -> dict:
     silently swallowed here.
     """
     settings = get_settings()
+    import os
+
     return {
         "status": "ok",
         "integrations": {
             "mongo": bool(settings.mongo_uri),
             "groq": settings.groq_enabled,
             "github": bool(settings.github_token and settings.github_repo),
+            "sarvam": settings.sarvam_enabled,
+            "calendar": os.path.exists(settings.google_credentials_path)
+            or os.path.exists(settings.google_token_path),
+            "memory": True,  # ChromaDB is local; no credential to miss
         },
         "extractor": "groq" if settings.groq_enabled else "reference",
+        "normalizer": "sarvam" if settings.sarvam_enabled else "none",
+        "agent_runtime": settings.agent_runtime,
+        "enabled_side_effects": settings.enabled_side_effects,
         "confidence_threshold": settings.confidence_threshold,
     }

@@ -110,6 +110,12 @@ async def upload_meeting(
     except TranscriptParseError as exc:
         raise HTTPException(422, f"Could not parse transcript: {exc}")
 
+    # Agents capture failures into the run state rather than raising, so a
+    # partial run still produces an honest trace. The API still has to
+    # report it as a failure -- "graceful failure" means saying what broke.
+    if outcome.error:
+        raise HTTPException(422, f"Could not process transcript: {outcome.error}")
+
     return UploadResponse(
         meeting_id=outcome.meeting_id,
         title=title,

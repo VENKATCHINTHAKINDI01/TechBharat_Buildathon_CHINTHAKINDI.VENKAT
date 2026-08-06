@@ -54,13 +54,32 @@ class DateResolutionMethod(str, Enum):
 
 class AuditStage(str, Enum):
     ingestion = "ingestion"
+    normalization = "normalization"
     extraction = "extraction"
     validation = "validation"
     resolution = "resolution"
     gate = "gate"
     review = "review"
-    github_create = "github_create"
     dedupe = "dedupe"
+    # side effects -- one value per gated tool, so the audit log answers
+    # "which external system did we touch" without parsing payloads.
+    github_create = "github_create"
+    calendar_create = "calendar_create"
+    memory_index = "memory_index"
+    notification = "notification"
+    # orchestration
+    agent_step = "agent_step"
+    live = "live"
+
+
+class SideEffect(str, Enum):
+    """The external actions an approved item may fire. Every one is gated
+    identically: passing GateDecision + explicit human ReviewDecision."""
+
+    github_issue = "github_issue"
+    calendar_invite = "calendar_invite"
+    memory_index = "memory_index"
+    notification = "notification"
 
 
 class ReviewDecisionValue(str, Enum):
@@ -81,11 +100,30 @@ class Participant(BaseModel):
 
 
 class TranscriptSegment(BaseModel):
+    """One speaker turn.
+
+    ``text`` is the original transcript text, verbatim, and is the ONLY
+    thing evidence quotes are ever validated against. ``normalized_text``
+    is an optional English rendering (Sarvam) used purely as extraction
+    input to improve accuracy on code-switched speech.
+
+    Keeping them separate is what lets CommitGuard translate for
+    comprehension without ever weakening the audit trail: a reviewer and
+    a judge always see the words that were actually spoken.
+    """
+
     segment_id: str
     speaker: str
     start_ms: Optional[int] = None
     end_ms: Optional[int] = None
     text: str
+    normalized_text: Optional[str] = None
+
+    @property
+    def extraction_text(self) -> str:
+        """What the extractor reads. Falls back to the original when no
+        normalization was performed."""
+        return self.normalized_text or self.text
 
 
 class EvidenceQuote(BaseModel):
@@ -124,6 +162,17 @@ class ValidatedItem(CandidateItem):
 
 
 class ResolvedItem(ValidatedItem):
+    """A validated item with owner and date resolved.
+
+    ``confidence`` on this class is the **composite** score (extraction
+    blended with owner- and date-resolution outcomes -- see
+    ``app/services/confidence.py``), because that is what the safety gate
+    compares against the threshold. ``extraction_confidence`` preserves
+    the model's original self-reported number so the composite can be
+    recomputed when a reviewer edits the owner or the date.
+    """
+
+    extraction_confidence: Optional[float] = None
     owner_participant_id: Optional[str] = None
     owner_resolution_method: OwnerResolutionMethod = OwnerResolutionMethod.unresolved
     due_date: Optional[date] = None
@@ -184,3 +233,93 @@ class GitHubIssueRecord(BaseModel):
     github_issue_number: int
     github_issue_url: str
     created_at: datetime
+
+
+# ---------------------------------------------------------------------------
+# Orchestration + side-effect records
+# ---------------------------------------------------------------------------
+
+
+class AgentStatus(str, Enum):
+    ok = "ok"
+    skipped = "skipped"
+    failed = "failed"
+    interrupted = "interrupted"
+
+
+class AgentStep(BaseModel):
+    """One agent's execution within a run.
+
+    Persisted and shown in the UI so 'what did the agent system actually
+    do' is inspectable rather than a black box -- the brief judges an
+    agent on its auditability, not on it feeling autonomous.
+    """
+
+    agent: str
+    status: AgentStatus
+    started_at: datetime
+    finished_at: datetime
+    duration_ms: int
+    tools_used: list[str] = Field(default_factory=list)
+    summary: str = ""
+    error: Optional[str] = None
+
+
+class AgentRun(BaseModel):
+    run_id: str
+    meeting_id: str
+    steps: list[AgentStep] = Field(default_factory=list)
+    runtime: str = "inhouse"  # "inhouse" | "langgraph"
+    interrupted_at: Optional[str] = None
+    started_at: datetime
+    finished_at: Optional[datetime] = None
+
+    @property
+    def total_ms(self) -> int:
+        return sum(s.duration_ms for s in self.steps)
+
+
+class CalendarEventRecord(BaseModel):
+    dedupe_key: str
+    candidate_id: str
+    meeting_id: str
+    event_id: str
+    attendee_email: str
+    due_date: Optional[date] = None
+    created_at: datetime
+
+
+class NotificationRecord(BaseModel):
+    notification_id: str
+    candidate_id: str
+    meeting_id: str
+    owner_email: str
+    channel: str = "calendar"
+    reminder_at: Optional[datetime] = None
+    created_at: datetime
+
+
+class MemoryRecord(BaseModel):
+    """An approved commitment indexed for cross-meeting recall.
+
+    Only approved items are ever indexed -- the memory store is a record
+    of what a team actually committed to, never of what a model guessed.
+    """
+
+    memory_id: str
+    candidate_id: str
+    meeting_id: str
+    meeting_title: str
+    meeting_date: str
+    text: str
+    owner_participant_id: Optional[str] = None
+    due_date: Optional[date] = None
+    created_at: datetime
+
+
+class CarriedForwardItem(BaseModel):
+    """A prior-meeting commitment surfaced in a later meeting."""
+
+    memory: MemoryRecord
+    similarity: float
+    days_overdue: Optional[int] = None

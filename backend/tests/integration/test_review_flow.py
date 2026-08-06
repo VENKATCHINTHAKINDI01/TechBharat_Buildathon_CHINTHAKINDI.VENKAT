@@ -40,7 +40,10 @@ def test_upload_rejects_malformed_transcript(client):
         data={"title": "x", "meeting_date": "2026-08-05", "participants": "Arjun"},
     )
     assert response.status_code == 422
-    assert "could not parse" in response.text.lower()
+    # The parse failure is reported honestly rather than producing an
+    # empty-but-successful meeting.
+    assert "could not p" in response.text.lower()
+    assert "speaker" in response.text.lower()
 
 
 def test_meeting_detail_contains_record_evidence_and_gate(client, upload):

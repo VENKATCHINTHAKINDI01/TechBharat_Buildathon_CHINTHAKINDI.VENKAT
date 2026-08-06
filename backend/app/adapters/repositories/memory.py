@@ -12,9 +12,12 @@ from __future__ import annotations
 from typing import Optional
 
 from app.domain.models import (
+    AgentRun,
     AuditEvent,
+    CalendarEventRecord,
     GitHubIssueRecord,
     MeetingRecord,
+    NotificationRecord,
     Participant,
     ResolvedItem,
     ReviewDecision,
@@ -29,6 +32,9 @@ class InMemoryRepository:
         self._decisions: dict[str, ReviewDecision] = {}
         self._audit: list[AuditEvent] = []
         self._issues: dict[str, GitHubIssueRecord] = {}
+        self._calendar: dict[str, CalendarEventRecord] = {}
+        self._notifications: list[NotificationRecord] = []
+        self._runs: dict[str, AgentRun] = {}
 
     async def create_meeting(
         self, meeting_id: str, title: str, meeting_date: str, participants: list[Participant]
@@ -87,3 +93,29 @@ class InMemoryRepository:
 
     async def list_issue_records(self, meeting_id: str) -> list[GitHubIssueRecord]:
         return [r for r in self._issues.values() if r.meeting_id == meeting_id]
+
+    # --- calendar ---
+    async def save_calendar_event(self, record: CalendarEventRecord) -> None:
+        self._calendar.setdefault(record.dedupe_key, record)
+
+    async def find_calendar_event_by_dedupe_key(
+        self, dedupe_key: str
+    ) -> Optional[CalendarEventRecord]:
+        return self._calendar.get(dedupe_key)
+
+    async def list_calendar_events(self, meeting_id: str) -> list[CalendarEventRecord]:
+        return [r for r in self._calendar.values() if r.meeting_id == meeting_id]
+
+    # --- notifications ---
+    async def save_notification(self, record: NotificationRecord) -> None:
+        self._notifications.append(record)
+
+    async def list_notifications(self, meeting_id: str) -> list[NotificationRecord]:
+        return [n for n in self._notifications if n.meeting_id == meeting_id]
+
+    # --- agent runs ---
+    async def save_agent_run(self, run: AgentRun) -> None:
+        self._runs[run.meeting_id] = run
+
+    async def get_agent_run(self, meeting_id: str) -> Optional[AgentRun]:
+        return self._runs.get(meeting_id)

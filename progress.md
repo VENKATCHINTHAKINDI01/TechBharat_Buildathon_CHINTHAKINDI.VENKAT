@@ -2,13 +2,21 @@
 
 ## Current state
 
-**Complete, runnable end-to-end product.** Every P0 and P1 feature is `done`
-except `F019` (evaluation report and demo freeze). A transcript can be
-uploaded, extracted, classified, resolved, gated, reviewed by a human, and
-turned into a real GitHub issue that cannot be duplicated — with a full
-audit trail, through the API and through the React UI.
+**Complete, runnable, agentic end-to-end product.** 28 of 29 features are
+`done`; only `F019` (evaluation report and demo freeze) remains.
 
-Verification: `bash scripts/verify.sh` exits 0; **290 tests pass** with no
+A transcript — uploaded or streamed live — is parsed, optionally
+translated for comprehension, extracted and classified by an LLM,
+citation-checked by deterministic code, resolved for owner and date,
+scored, gated by six deterministic rules, synthesized into a structured
+meeting record, reviewed by a human, and then turned into a GitHub issue,
+a Calendar invite, a cross-meeting memory entry and a notification record
+— each independently gated, idempotent and audited.
+
+The pre-CommitGuard Nexvi.Meets tree has been fully absorbed and removed;
+everything worth keeping now lives in the live codebase with tests.
+
+Verification: `bash scripts/verify.sh` exits 0; **353 tests pass** with no
 network access and no credentials; the frontend builds clean.
 
 ## Active feature
@@ -18,166 +26,158 @@ None. Next pick is `F019`.
 ## Completed features
 
 F001 scaffold · F002 ingestion · F003 normalization · F004 schemas ·
-F004b priority field · F005 extraction · F006 validation · F007 owner
+F004b priority · F005 extraction · F006 validation · F007 owner
 resolution · F008 date resolution · F009 disagreement/cancellation ·
 F010 safety gate · F011 persistence + audit · F011b meeting record ·
 F012 review API · F013 review frontend · F014 GitHub Issues ·
 F015 idempotency · F016 evaluation harness · F017 code-switched fixture ·
-F018 end-to-end test.
+F018 end-to-end test · **F020 tool registry** · **F021 multi-agent
+orchestration** · **F022 composite confidence** · **F023 code-switch
+normalization** · **F024 Calendar** · **F025 cross-meeting memory** ·
+**F026 notifications** · **F027 live meeting mode**.
 
 ## Verification evidence
 
 ```
-bash scripts/verify.sh              -> exit 0, "verify.sh: all checks passed"
-cd backend && pytest -q tests       -> 290 passed
-cd frontend && npm run build        -> built in 567ms, no errors
+bash init.sh                        -> exit 0, "Initialization complete."
+bash scripts/verify.sh              -> exit 0, "all checks passed"
+cd backend && pytest -q tests       -> 353 passed
+cd frontend && npm run build        -> built, no errors
 ```
-
-Test breakdown (290):
 
 | Suite | N | Covers |
 |---|---|---|
-| `unit/test_gate.py` | 170 | F010, incl. exhaustive 160-case truth table |
-| `unit/test_ingestion.py` | 19 | F002/F003, all 9 fixtures + malformed/vtt/srt |
-| `unit/test_schemas.py` | 11 | F004 round-trip + validation errors |
-| `unit/test_date_resolution.py` | 11 | F008, incl. Telugu postpositions |
-| `unit/test_groq_extractor.py` | 11 | Groq parsing, stubbed client, no network |
-| `unit/test_extraction_validation.py` | 10 | F005/F006/F009 across all fixtures |
-| `unit/test_meeting_record.py` | 8 | F011b partition + summary |
-| `unit/test_owner_resolution.py` | 8 | F007 incl. ambiguous-owner fail-closed |
+| `unit/test_gate.py` | 170 | F010, exhaustive 160-case truth table |
+| `unit/test_ingestion.py` | 19 | F002/F003, all fixtures + vtt/srt/malformed |
+| `integration/test_side_effects.py` | 17 | F024–F027, multi-effect approval, live ws |
+| `integration/test_review_flow.py` | 17 | F012/F014/F015/F018 |
+| `unit/test_normalization_and_confidence.py` | 13 | F022/F023 |
+| `unit/test_agents.py` | 13 | F021 graph, routing, tracing, interrupt |
+| `unit/test_tool_registry.py` | 11 | F020 authorisation enforcement |
+| `unit/test_schemas.py` | 11 | F004 round-trip + validation |
+| `unit/test_groq_extractor.py` | 11 | LLM parsing, stubbed client |
+| `unit/test_date_resolution.py` | 11 | F008 incl. Telugu postpositions |
+| `unit/test_extraction_validation.py` | 10 | F005/F006/F009 |
+| `unit/test_owner_resolution.py` | 8 | F007 fail-closed |
+| `unit/test_meeting_record.py` | 8 | F011b partition |
+| `unit/test_live_mode.py` | 8 | F027 rolling window + dedupe |
+| `unit/test_idempotency.py` | 6 | F015 |
 | `unit/test_evidence_filter.py` | 6 | citation grading |
-| `unit/test_idempotency.py` | 6 | F015 dedupe key properties |
+| `integration/test_scaffold.py` | 5 | F001 + boundary guards |
+| `unit/test_evaluation.py` | 5 | F016 scorer + measured baseline |
 | `unit/test_priority_field.py` | 4 | F004b |
-| `unit/test_evaluation.py` | 4 | F016 scorer + measured baseline |
-| `integration/test_review_flow.py` | 21 | F012/F014/F015/F018 full HTTP flow |
-| `integration/test_scaffold.py` | 4 | F001 + legacy-import guard |
 
-Evaluation (F016), deterministic extractor against `tests/fixtures/labels.json`:
+`scripts/verify.sh` additionally proves *structurally* that:
 
-| Metric | Result | Brief target | Pass |
-|---|---|---|---|
-| Action item recall | 87.5% | ≥ 80% | yes |
-| Action item precision | 100% | ≥ 75% | yes |
-| Owner accuracy | 100% | ≥ 85% | yes |
-| Date resolution | 100% | ≥ 90% | yes |
-| Gate decisions vs. labels | 100% | — | — |
+- extraction and the agents cannot import a side-effecting adapter,
+- only `approval.py` invokes a side-effecting tool,
+- `check_gate`'s signature has not drifted to accept free text,
+- `backend/.env` is untracked,
+- every labelled fixture exists on disk,
+- no feature is `done` while a dependency is not.
 
-The single recall miss is `disagreement.txt` → "roll back the deploy": the
-system classifies it as a `decision` (disputed), not an `action_item`, so
-it isn't counted as found. Arguably the label is wrong rather than the
-system — left as a visible miss rather than adjusted to manufacture 100%.
+Evaluation (F016), deterministic extractor: recall 87.5%, precision 100%,
+owner 100%, date 100%, gate-vs-label 100% — all four brief targets met.
+The single recall miss (`disagreement.txt` → "roll back the deploy") is a
+`decision`, not an `action_item`; left visible rather than relabelled to
+manufacture a perfect score.
 
 ## Known limitations — read before demoing
 
-- **The evaluation numbers above are on fixtures we wrote *and* labelled
-  ourselves.** They are not the judges' gold transcript. The deterministic
-  extractor is pattern-based; on unseen phrasing it will score far lower.
-  This is precisely why Groq is the primary extractor whenever a key is
-  present — but the Groq path's accuracy is **unmeasured**, because we have
-  no gold transcript to measure it against.
-- The deterministic reference extractor recognizes a fixed set of English
-  phrases plus a documented Telugu lexicon (`chesthava`, `chesthanu`,
-  `పంపిస్తాను`, `ki`, `varaku`). One rewrite (`_CHECKLIST_CHESI_RE`) is a
-  hand-written special case targeting the brief's flagship demo sentence —
-  flagged in the code, not hidden. It is not general NLU.
-- **No end-to-end run has been executed against real Mongo, real Groq, or
-  real GitHub in this environment.** All 290 tests use in-memory adapters
+- **No live run against real Mongo, Groq, GitHub or Calendar has been
+  performed in this environment.** All 353 tests use in-memory adapters
   and a stubbed Groq client. The real adapters are written and typed but
-  their live behaviour is unverified — this is the highest-risk gap before
-  a demo. Run once against a sandbox repo before presenting.
-- Latency against the brief's "under 3 minutes for a 45-minute meeting"
-  target is unmeasured; no transcript of that size has been run.
-- `contradiction_of` is never populated by the reference extractor;
-  renegotiated threads collapse into one final candidate and use
-  `contradiction_note` for human-readable context. The gate handles both,
-  but true before/after lineage doesn't exist yet.
-- No lint or type-check step is wired into `scripts/verify.sh` — the repo
-  has no ruff/mypy config. Worth adding before the codebase grows further.
-- Audio transcription and diarization are not implemented (both explicitly
-  permitted by the brief's FAQ). Cross-meeting memory, reminders, Slack/
-  Jira/Calendar, and live mode are P2 and deliberately absent.
-- The frontend has no automated tests; it is verified by `npm run build`
-  and manual use only.
+  their live behaviour is unverified. This is the highest-risk gap.
+- **The evaluation numbers are on fixtures we wrote *and* labelled.** Not
+  a gold transcript. The deterministic extractor is pattern-based; on
+  unseen phrasing it will score far lower. The Groq path is unmeasured.
+- The deterministic extractor recognises a fixed English phrase set plus a
+  documented Telugu lexicon (`chesthava`, `chesthanu`, `పంపిస్తాను`, `ki`,
+  `varaku`). One rewrite (`_CHECKLIST_CHESI_RE`) is a hand-written special
+  case for the brief's flagship sentence — flagged in the code, not hidden.
+- Reminder times are computed **intent**; no background scheduler fires
+  them. The Calendar invite is the real notification. Carried over
+  honestly from the archived implementation.
+- The LangGraph runtime is implemented and falls back cleanly, but has not
+  been exercised against an installed LangGraph in this environment — the
+  fallback path is what the tests cover.
+- Cross-meeting carry-forward surfaces matches but does not yet mark items
+  completed or flag twice-slipped commitments (brief stretch goal, partial).
+- Audio transcription and diarization are not implemented (both permitted
+  by the brief's FAQ).
+- Latency against "under 3 minutes for a 45-minute meeting" is unmeasured.
+- No lint/type-check step; the repo has no ruff/mypy config.
+- The frontend has no automated tests beyond the build.
 
 ## Session log
 
-### 2026-08-05 — Sessions 1–3 (harness through brief reconciliation)
+### 2026-08-05 — Sessions 1–3
 
-Built the harness (`AGENTS.md`, `feature_list.json`, `init.sh`,
-`scripts/verify.sh`, `docs/*`), then F001–F010 in dependency order, each
-with tests written first and verification recorded before the feature was
-marked `done`. Notable red-then-green moments: F001's health check (404
-before mounting), F005/F006 (`vague_suggestion` produced 2 candidates until
-`SUGGESTION_HEDGES` was narrowed to "someone should"), F010 (the truth-table
-helper used `kind="action_item"`, which the F004 validator rejects with
-empty evidence). After the official TechBharat brief PDF was supplied, added
-F004b (`priority`) and F011b (`MeetingRecord`) to close two real compliance
-gaps, and corrected `docs/acceptance-tests.md`, which had described F009 as
-setting `contradiction_of` — behaviour the implementation never had.
+Built the harness and F001–F010 in dependency order, tests first. After the
+official brief PDF arrived, added F004b (`priority`) and F011b
+(`MeetingRecord`) to close two compliance gaps, and corrected
+`docs/acceptance-tests.md`, which had described F009 behaviour the
+implementation never had.
 
-### 2026-08-05 — Session 4 (restructure + complete the product)
+### 2026-08-05 — Session 4
 
-**Structural decision:** the repo contained two parallel half-implementations
-of the same product. The legacy Nexvi.Meets pipeline could reach a real
-external side effect (a Calendar invite) with **no safety gate at all**,
-directly contradicting the brief's hard "zero unapproved actions" metric.
-Per the user's decision, the useful parts were absorbed and the rest
-archived to `legacy/` rather than deleted, with `legacy/README.md`
-documenting each file's disposition. A test
-(`test_app_does_not_import_legacy_nexvi_modules`) now fails if any of it
-re-enters the import graph.
+Restructured into ports-and-adapters, archived the legacy tree, and built
+F011–F018: Mongo persistence with unique-index idempotency, the review
+API, the GitHub tracker, the Groq extractor with deterministic fallback,
+the React review UI, and the evaluation harness.
 
-Restructured into ports-and-adapters: `core` / `domain` / `services` /
-`adapters` / `api`, with `tests/{unit,integration}`. All 245 existing tests
-stayed green through the move.
+### 2026-08-05 — Session 5 (agents, tools, and full legacy reintegration)
 
-Then built the remaining features:
+Per the user's decision, the archived tree was **unarchived, absorbed, and
+deleted** — everything of value now lives in the live codebase with tests.
 
-- **F011** — `Repository` protocol; Mongo implementation with a **unique
-  index** on `cg_issues.dedupe_key` so duplicate suppression holds under
-  concurrent approvals, not just in application logic; in-memory
-  implementation for tests. Append-only audit writer.
-- **F014/F015** — `IssueTracker` protocol; real GitHub REST implementation;
-  in-memory test double. Dedupe key now hashes the **resolved owner id**
-  rather than the spoken name, so "Rohit"/"rohit"/"Rohit Sharma" cannot
-  produce three issues for one commitment.
-- **Groq extractor** — primary when a key is present, deterministic
-  fallback otherwise. The prompt demands segment-cited verbatim quotes;
-  unknown enum values coerce toward `suggestion` (never toward
-  `confirmed`), so a confused model degrades into "needs a human" rather
-  than "ship it".
-- **`drop_unsupported_evidence`** — deterministic citation grading applied
-  to *every* extractor's output. An LLM does not get to grade its own
-  citations.
-- **F012** — review API. Editing mutates the **item**, not the payload, so
-  the gate re-evaluates the corrected values; a reviewer cannot hand-write
-  a payload past a gate that never saw it. `approval.py` re-runs the gate
-  server-side at the moment of the side effect rather than trusting the
-  UI's last render.
-- **F013** — React review UI: status bar showing live integrations, meeting
-  record, candidate cards with gate reasons, evidence drawer showing the
-  verbatim quotes and the exact JSON payload, edit/approve/reject, and the
-  full audit table.
-- **F016/F018** — labelled eval dataset + scorer reporting the brief's four
-  metrics; 21 integration tests covering ineligible/cancelled/disputed/
-  prompt-injection refusals, duplicate suppression, tracker-failure
-  auditing, edit-then-approve, and the code-switched meeting end to end.
+- **F020 tool registry.** Every capability is a declared `Tool` with
+  metadata. `ToolRegistry.invoke` refuses a side-effecting tool without an
+  `Authorization` (passing gate + approving review, same candidate). This
+  turns "zero unapproved actions" from a convention into a structural
+  property, and 11 tests make it falsifiable.
+- **F021 multi-agent orchestration.** Seven agents, each declaring its
+  tools. Two runtimes driving the *same* agents: an in-house graph with
+  named routing conditions, cycle detection and a terminal human-review
+  interrupt, plus a LangGraph runtime that falls back automatically. The
+  run trace is persisted and exposed at `/system/meetings/{id}/agent-run`.
+- **F022 composite confidence.** Restored from the archived scorer and
+  promoted from display-only to a real gate input: extraction confidence
+  blended with owner- and date-resolution quality. This required
+  recomputing the score when a reviewer edits an owner — caught by an
+  existing test that went red immediately, which is exactly what it was
+  written for.
+- **F023 code-switch normalization.** Sarvam restored, redesigned as
+  *additive*: original text stays verbatim for evidence, translation feeds
+  extraction only. The legacy version translated in place, which would
+  have silently destroyed every citation on a code-switched transcript.
+- **F024–F026 Calendar, memory, notifications.** All three restored as
+  gated side effects behind the registry, each independently idempotent
+  and audited, each degrading honestly (`skipped` / `failed`) rather than
+  taking a successful GitHub issue down with them.
+- **F027 live meeting mode.** Websocket session with a rolling window;
+  the same commitment heard twice updates one candidate rather than
+  duplicating. Every payload states that live mode surfaces only.
+- Frontend gained an agent-trace view, a live capture panel, and
+  per-approval side-effect selection.
+- `verify.sh` gained structural boundary checks; `feature_list.json` gained
+  F020–F027; `docs/architecture.md` and `README.md` rewritten.
 
-Also: `README.md` (was empty), `backend/.env.example`, `backend/Dockerfile`,
-rewritten `docker-compose.yml` and `docs/architecture.md`, cleaned
-`requirements.txt` (dropped chroma/langgraph/sarvam/google — all archived),
-and `scripts/verify.sh` now additionally checks dependency ordering in
-`feature_list.json`, that `backend/.env` is untracked, that labelled
-fixtures exist on disk, and that live code never imports `legacy/`.
+Test count went 290 → 353. Two failures during the work were genuine and
+informative: the legacy-import guard correctly flagged the new `app.agents`
+/ `app.tools` packages (the guard was too broad and was narrowed to the
+real pre-CommitGuard modules), and the malformed-transcript test caught
+that agents now capture errors into state rather than raising — so the
+upload route needed to translate a captured error into a 422 instead of
+silently returning success.
 
 ## Next session
 
 1. Read `AGENTS.md`, `README.md`, `docs/architecture.md`,
    `docs/data-contracts.md`, `feature_list.json`, this file, `git log`.
 2. Run `bash init.sh`.
-3. **Before anything else: run one live end-to-end pass** against real
-   Mongo, a real `GROQ_API_KEY`, and a sandbox GitHub repo. That path is
-   written but unverified, and it is the biggest risk to the demo.
-4. Then `F019` (evaluation report and demo freeze) — and if a gold
-   transcript has been released, score the Groq extractor against it with
-   `app/services/evaluation.py` before freezing.
+3. **Before anything else: one live end-to-end pass** against real Mongo, a
+   real `GROQ_API_KEY`, a sandbox GitHub repo, and — if demoing it —
+   Google Calendar credentials. That path is written but unverified.
+4. Then `F019`. If a gold transcript has been released, score the Groq
+   extractor with `app/services/evaluation.py` before freezing.
