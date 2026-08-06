@@ -7,6 +7,7 @@ import {
   isCaptureSupported,
   tabAudioSupport,
 } from "../lib/audioCapture";
+import FloatingBar from "./FloatingBar";
 
 /**
  * Live meeting mode.
@@ -36,6 +37,7 @@ export default function LivePanel({ onFinished }) {
   const [error, setError] = useState(null);
   const [engines, setEngines] = useState({});
   const [tracks, setTracks] = useState({ mic: false, remote: false });
+  const [showBar, setShowBar] = useState(true);
 
   const browser = tabAudioSupport();
   const socketRef = useRef(null);
@@ -286,7 +288,19 @@ export default function LivePanel({ onFinished }) {
 
   // ---------------- live / finalizing / ended ----------------
   return (
-    <section className="panel">
+    <>
+      {phase === "live" && showBar && (
+        <FloatingBar
+          segments={segments}
+          candidates={candidates}
+          tracks={tracks}
+          meetingId={meetingId}
+          onEnd={endMeeting}
+          onClose={() => setShowBar(false)}
+        />
+      )}
+
+      <section className="panel">
       <h2>{phase === "ended" ? "Meeting ended" : "Live meeting"}</h2>
 
       <div className="meta">
@@ -320,6 +334,11 @@ export default function LivePanel({ onFinished }) {
       {phase === "live" && (
         <div className="actions">
           <button onClick={() => send({ type: "flush" })}>Extract now</button>
+          {!showBar && (
+            <button className="ghost" onClick={() => setShowBar(true)}>
+              Show floating bar
+            </button>
+          )}
           <button className="danger" onClick={endMeeting}>
             End meeting
           </button>
@@ -438,6 +457,7 @@ export default function LivePanel({ onFinished }) {
       <p className="muted" style={{ marginTop: 14 }}>
         Live mode surfaces commitments only. Nothing is created until you approve it in review.
       </p>
-    </section>
+      </section>
+    </>
   );
 }

@@ -16,6 +16,7 @@ duplicate suppression (F015) hold even under concurrent approvals.
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Optional
 
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
@@ -75,6 +76,9 @@ class MongoRepository:
         await self._db.nm_calendar.create_index("dedupe_key", unique=True)
         await self._db.nm_notifications.create_index("meeting_id")
         await self._db.nm_agent_runs.create_index("meeting_id", unique=True)
+        await self._db.nm_segments.create_index("meeting_id", unique=True)
+        # Newest-first history without a full collection scan.
+        await self._db.nm_meetings.create_index("created_at")
 
     # --- meetings ---
     async def create_meeting(
@@ -88,7 +92,10 @@ class MongoRepository:
                     "title": title,
                     "meeting_date": meeting_date,
                     "participants": [p.model_dump() for p in participants],
-                }
+                },
+                # Only on insert: re-running a meeting must not reset when
+                # it was first seen, or history ordering would shuffle.
+                "$setOnInsert": {"created_at": datetime.now(timezone.utc).isoformat()},
             },
             upsert=True,
         )
@@ -215,3 +222,55 @@ class MongoRepository:
     async def get_agent_run(self, meeting_id: str) -> Optional[AgentRun]:
         doc = _strip_id(await self._db.nm_agent_runs.find_one({"meeting_id": meeting_id}))
         return AgentRun.model_validate(doc) if doc else None
+
+    # --- transcript ---
+    async def save_segments(self, meeting_id: str, segments: list[dict]) -> None:
+        await self._db.nm_segments.update_one(
+            {"meeting_id": meeting_id},
+            {"$set": {"meeting_id": meeting_id, "segments": segments}},
+            upsert=True,
+        )
+
+    async def list_segments(self, meeting_id: str) -> list[dict]:
+        doc = _strip_id(await self._db.nm_segments.find_one({"meeting_id": meeting_id}))
+        return (doc or {}).get("segments", [])
+
+    # --- history ---
+    async def meeting_summaries(self) -> list[dict]:
+        """One row per meeting with the counts the history view needs.
+
+        Aggregated per meeting rather than joined in the client: a list of
+        50 meetings would otherwise be 50 round trips.
+        """
+        out = []
+        async for meeting in self._db.nm_meetings.find().sort("created_at", -1):
+            mid = meeting["meeting_id"]
+            reviewed = 0
+            candidate_ids = [
+                d["candidate_id"]
+                async for d in self._db.nm_items.find({"meeting_id": mid}, {"candidate_id": 1})
+            ]
+            if candidate_ids:
+                reviewed = await self._db.nm_review.count_documents(
+                    {"candidate_id": {"$in": candidate_ids}}
+                )
+            segments_doc = await self._db.nm_segments.find_one({"meeting_id": mid})
+            out.append(
+                {
+                    **(_strip_id(meeting) or {}),
+                    "action_items": await self._db.nm_items.count_documents(
+                        {"meeting_id": mid, "kind": "action_item"}
+                    ),
+                    "candidates": len(candidate_ids),
+                    "reviewed": reviewed,
+                    "issues_created": await self._db.nm_issues.count_documents({"meeting_id": mid}),
+                    "calendar_events": await self._db.nm_calendar.count_documents(
+                        {"meeting_id": mid}
+                    ),
+                    "segments": len((segments_doc or {}).get("segments", [])),
+                    "has_record": bool(
+                        await self._db.nm_meeting_records.find_one({"meeting_id": mid})
+                    ),
+                }
+            )
+        return out

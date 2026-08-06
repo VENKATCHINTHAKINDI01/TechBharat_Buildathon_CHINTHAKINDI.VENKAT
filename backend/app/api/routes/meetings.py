@@ -5,6 +5,7 @@ import json
 from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi.responses import PlainTextResponse
 
 from app.api import deps
 from app.api.schemas import (
@@ -14,11 +15,12 @@ from app.api.schemas import (
     to_candidate_view,
 )
 from app.core.config import Settings
-from app.domain.models import Participant
+from app.domain.models import Participant, TranscriptSegment
 from app.domain.safety.gate import check_gate
 from app.services.ingestion.parser import TranscriptParseError
 from app.services.payload import build_issue_payload
 from app.services.pipeline import run_pipeline
+from app.services.report import collect_actions_taken, generate_report, render_markdown
 
 router = APIRouter(prefix="/meetings", tags=["meetings"])
 
@@ -130,7 +132,85 @@ async def upload_meeting(
 
 @router.get("", response_model=list[dict])
 async def list_meetings(repository=Depends(deps.get_repository)) -> list[dict]:
-    return await repository.list_meetings()
+    """Meeting history, newest first, with the counts a list view needs.
+
+    Aggregated server-side: a client that fetched each meeting's detail to
+    render a list of fifty would make fifty round trips.
+    """
+    return await repository.meeting_summaries()
+
+
+@router.get("/{meeting_id}/report")
+async def meeting_report(
+    meeting_id: str,
+    repository=Depends(deps.get_repository),
+    settings: Settings = Depends(deps.get_app_settings),
+) -> dict:
+    """The end-to-end report for one meeting.
+
+    Regenerated on every request rather than served from a stored copy,
+    so a report opened a week later reflects approvals made since the
+    meeting ended instead of freezing at the moment the call dropped.
+    """
+    stored = await repository.list_segments(meeting_id)
+    segments = [TranscriptSegment.model_validate(s) for s in stored] if stored else []
+
+    report = await generate_report(
+        repository=repository,
+        meeting_id=meeting_id,
+        confidence_threshold=settings.confidence_threshold,
+        source="live" if any(s.get("track") for s in stored) else "upload",
+        segments=segments,
+    )
+    if report is None:
+        raise HTTPException(404, "Meeting not found")
+    return report.model_dump(mode="json")
+
+
+@router.get("/{meeting_id}/report.md", response_class=PlainTextResponse)
+async def meeting_report_markdown(
+    meeting_id: str,
+    repository=Depends(deps.get_repository),
+    settings: Settings = Depends(deps.get_app_settings),
+) -> str:
+    """The same report as shareable markdown, for pasting into Slack."""
+    stored = await repository.list_segments(meeting_id)
+    segments = [TranscriptSegment.model_validate(s) for s in stored] if stored else []
+    report = await generate_report(
+        repository=repository,
+        meeting_id=meeting_id,
+        confidence_threshold=settings.confidence_threshold,
+        source="live" if any(s.get("track") for s in stored) else "upload",
+        segments=segments,
+    )
+    if report is None:
+        raise HTTPException(404, "Meeting not found")
+    return render_markdown(report)
+
+
+@router.get("/{meeting_id}/actions")
+async def meeting_actions(meeting_id: str, repository=Depends(deps.get_repository)) -> dict:
+    """Every external action taken for this meeting, successes and failures.
+
+    Read from the side-effect ledgers rather than the audit narrative, so
+    "was an issue actually created" has one honest answer.
+    """
+    if not await repository.get_meeting(meeting_id):
+        raise HTTPException(404, "Meeting not found")
+    actions = await collect_actions_taken(repository, meeting_id)
+    return {
+        "meeting_id": meeting_id,
+        "count": len(actions),
+        "actions": [a.model_dump(mode="json") for a in actions],
+    }
+
+
+@router.get("/{meeting_id}/transcript")
+async def meeting_transcript(meeting_id: str, repository=Depends(deps.get_repository)) -> dict:
+    if not await repository.get_meeting(meeting_id):
+        raise HTTPException(404, "Meeting not found")
+    segments = await repository.list_segments(meeting_id)
+    return {"meeting_id": meeting_id, "segment_count": len(segments), "segments": segments}
 
 
 @router.get("/{meeting_id}", response_model=MeetingDetailResponse)

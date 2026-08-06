@@ -5,7 +5,7 @@ import MeetingRecord from "./MeetingRecord";
 import AuditLog from "./AuditLog";
 import AgentTrace from "./AgentTrace";
 
-export default function ReviewScreen({ meetingId, uploadSummary, onBack }) {
+export default function ReviewScreen({ meetingId, uploadSummary, onBack, onOpenReport }) {
   const [detail, setDetail] = useState(null);
   const [error, setError] = useState(null);
   const [reviewer, setReviewer] = useState("demo_reviewer");
@@ -39,8 +39,13 @@ export default function ReviewScreen({ meetingId, uploadSummary, onBack }) {
     <>
       <div className="actions" style={{ marginBottom: 16 }}>
         <button className="ghost" onClick={onBack}>
-          ← Upload another
+          ← Back
         </button>
+        {onOpenReport && (
+          <button className="ghost" onClick={onOpenReport}>
+            View report
+          </button>
+        )}
         <span className="pill">{detail.title}</span>
         <span className="pill">{detail.meeting_date}</span>
         {uploadSummary && (

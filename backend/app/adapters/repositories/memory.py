@@ -35,6 +35,7 @@ class InMemoryRepository:
         self._calendar: dict[str, CalendarEventRecord] = {}
         self._notifications: list[NotificationRecord] = []
         self._runs: dict[str, AgentRun] = {}
+        self._segments: dict[str, list[dict]] = {}
 
     async def create_meeting(
         self, meeting_id: str, title: str, meeting_date: str, participants: list[Participant]
@@ -119,3 +120,37 @@ class InMemoryRepository:
 
     async def get_agent_run(self, meeting_id: str) -> Optional[AgentRun]:
         return self._runs.get(meeting_id)
+
+    # --- transcript ---
+    async def save_segments(self, meeting_id: str, segments: list[dict]) -> None:
+        self._segments[meeting_id] = list(segments)
+
+    async def list_segments(self, meeting_id: str) -> list[dict]:
+        return list(self._segments.get(meeting_id, []))
+
+    # --- history ---
+    async def meeting_summaries(self) -> list[dict]:
+        out = []
+        for meeting in self._meetings.values():
+            mid = meeting["meeting_id"]
+            items = [i for i in self._items.values() if i.meeting_id == mid]
+            out.append(
+                {
+                    **meeting,
+                    "action_items": sum(1 for i in items if i.kind.value == "action_item"),
+                    "candidates": len(items),
+                    "reviewed": sum(
+                        1 for i in items if self._decisions.get(i.candidate_id) is not None
+                    ),
+                    "issues_created": sum(
+                        1 for r in self._issues.values() if r.meeting_id == mid
+                    ),
+                    "calendar_events": sum(
+                        1 for r in self._calendar.values() if r.meeting_id == mid
+                    ),
+                    "segments": len(self._segments.get(mid, [])),
+                    "has_record": mid in self._records,
+                }
+            )
+        out.sort(key=lambda m: m.get("created_at") or m["meeting_id"], reverse=True)
+        return out

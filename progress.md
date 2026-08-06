@@ -16,7 +16,7 @@ a Calendar invite, a cross-meeting memory entry and a notification record
 The original Nexvi.Meets prototype tree has been fully absorbed and removed;
 everything worth keeping now lives in the live codebase with tests.
 
-Verification: `bash scripts/verify.sh` exits 0; **399 tests pass** with no
+Verification: `bash scripts/verify.sh` exits 0; **432 tests pass** with no
 network access and no credentials; the frontend builds clean.
 
 ## Active feature
@@ -41,7 +41,7 @@ normalization** · **F024 Calendar** · **F025 cross-meeting memory** ·
 ```
 bash init.sh                        -> exit 0, "Initialization complete."
 bash scripts/verify.sh              -> exit 0, "all checks passed"
-cd backend && pytest -q tests       -> 399 passed
+cd backend && pytest -q tests       -> 432 passed
 cd frontend && npm run build        -> built, no errors
 ```
 
@@ -147,6 +147,43 @@ live websocket tests were constructing the real Groq transcriber and
 calling the network with the developer's actual key. Fixed by overriding
 `get_transcriber`/`get_diarizer` in the integration conftest — the same
 mistake would have hit anyone adding a new adapter dependency.
+
+### 2026-08-06 — Session 7 (audit; identity, reports, history, floating bar)
+
+A full audit of every agent, tool and endpoint. One serious bug found.
+
+- **F031 meeting identity — SERIOUS BUG FIXED.** Live meeting ids were
+  `f"live-{id(websocket) & 0xFFFFFF:06x}"`. CPython reuses memory
+  addresses, so consecutive short-lived sockets collide: measured
+  **19,999 collisions in 20,000 objects**. Two live meetings in a row
+  would have shared an id — and the id keys the audit trail, the dedupe
+  keys, review decisions and issue records, so meeting two's commitments
+  would have merged into meeting one and one meeting's approval could
+  satisfy another's idempotency check. Replaced with
+  `nm-YYYYMMDD-<10 hex>` from uuid4, plus a repository existence check.
+  200,000 generated ids, zero collisions.
+- **F032 end-of-meeting report.** Generated when a meeting ends and
+  regenerated on every open, so a report read a week later reflects
+  approvals made since rather than freezing at the moment the call
+  dropped. Includes what was actually created, read from the side-effect
+  ledgers rather than the audit narrative — plus refusals and failures,
+  which leave no ledger entry and would otherwise make the report
+  quietly optimistic. Markdown export for pasting into Slack.
+- **F033 history + action ledger.** `GET /meetings` now returns
+  server-aggregated counts newest-first (fifty meetings would otherwise
+  be fifty round trips), plus `/actions`, `/transcript` and `/report.md`
+  per meeting. Transcripts are persisted so reports stay rebuildable.
+- **F034 floating bar.** Document Picture-in-Picture overlay showing the
+  live transcript and detected commitments in an OS-level always-on-top
+  window — the only mechanism that stays visible while you are in the
+  Meet tab. React renders into it through a portal, so it is the same
+  component tree with no message passing. Draggable in-page fallback for
+  browsers without the API, honest that it only floats above this tab.
+
+Audit result: 7 agents, 17 tools (exactly 4 side-effecting), all four
+side effects firing and independently idempotent, 13 audit stages
+recorded, cross-meeting memory recalling, live sessions producing
+distinct ids and reviewable candidates after the call. 399 -> 432 tests.
 
 ## Session log
 

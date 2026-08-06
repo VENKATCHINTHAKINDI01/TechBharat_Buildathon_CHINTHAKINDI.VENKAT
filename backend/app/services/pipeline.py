@@ -24,6 +24,7 @@ from app.domain.models import AgentRun, GateDecision, MeetingRecord, Participant
 from app.services.audit import AuditLogger
 from app.services.extraction.base import Extractor
 from app.services.extraction.reference import ReferenceExtractor
+from app.services.meeting_id import unique_meeting_id
 from app.services.normalization import build_normalizer
 from app.tools.catalog import build_registry
 
@@ -103,7 +104,7 @@ async def run_pipeline(
     meeting_id: str | None = None,
 ) -> PipelineOutcome:
     settings = settings or get_settings()
-    meeting_id = meeting_id or uuid.uuid4().hex[:12]
+    meeting_id = meeting_id or await unique_meeting_id(repository.get_meeting, meeting_date)
     audit = AuditLogger(repository, meeting_id)
 
     await repository.create_meeting(

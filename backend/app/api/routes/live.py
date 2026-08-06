@@ -46,7 +46,9 @@ from app.core.config import Settings
 from app.domain.models import AuditStage
 from app.services.audit import AuditLogger
 from app.services.live import ConsentRequired, LiveSession
+from app.services.meeting_id import is_valid_meeting_id, unique_meeting_id
 from app.services.meeting_record import synthesize_meeting_record
+from app.services.report import generate_report
 from app.services.pipeline import build_extractor
 
 logger = logging.getLogger("nexvi_meets.live")
@@ -116,7 +118,14 @@ async def live_session(
                     )
                     continue
 
-                meeting_id = message.get("meeting_id") or f"live-{id(websocket) & 0xFFFFFF:06x}"
+                # Never derive an id from id(obj): CPython reuses memory
+                # addresses, so consecutive sockets collided almost every
+                # time and two meetings silently shared one id.
+                requested = message.get("meeting_id")
+                if requested and is_valid_meeting_id(requested):
+                    meeting_id = requested
+                else:
+                    meeting_id = await unique_meeting_id(repository.get_meeting, meeting_date)
                 self_name = (message.get("self_participant") or "").strip().casefold()
                 self_id = next(
                     (p.participant_id for p in participants if p.name.casefold() == self_name),
@@ -323,6 +332,23 @@ async def live_session(
                     session.meeting_id, list(session.items_by_key.values())
                 )
                 await repository.save_meeting_record(record)
+
+                # Persist the transcript so the report can be regenerated
+                # later -- a report opened next week must still be able to
+                # show talk time and evidence.
+                await repository.save_segments(
+                    session.meeting_id, [s.as_dict() for s in session.segments]
+                )
+
+                await websocket.send_json({"type": "finalizing", "step": "building report"})
+                report = await generate_report(
+                    repository=repository,
+                    meeting_id=session.meeting_id,
+                    confidence_threshold=settings.confidence_threshold,
+                    source="live",
+                    segments=session.segments,
+                    warnings=session.warnings,
+                )
                 if audit:
                     await audit.record(
                         AuditStage.live,
@@ -340,6 +366,7 @@ async def live_session(
                         "type": "ended",
                         **session.snapshot(include_segments=500),
                         "executive_summary": record.executive_summary,
+                        "report": report.model_dump(mode="json") if report else None,
                         "review_url": f"/meetings/{session.meeting_id}",
                     }
                 )

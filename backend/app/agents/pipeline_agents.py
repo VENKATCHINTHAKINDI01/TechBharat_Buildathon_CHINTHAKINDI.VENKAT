@@ -226,6 +226,10 @@ class RecordAgent:
 
         await ctx.repository.save_items(state.resolved)
         await ctx.repository.save_meeting_record(state.record)
+        # Keep the transcript so the report can be rebuilt on demand.
+        await ctx.repository.save_segments(
+            state.meeting_id, [s.model_dump(mode="json") for s in state.segments]
+        )
         state._last_summary = (
             f"record saved, {len(state.carried_forward)} carried-forward match(es)"
         )

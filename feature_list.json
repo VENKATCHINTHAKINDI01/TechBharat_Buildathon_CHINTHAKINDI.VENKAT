@@ -302,6 +302,43 @@
       ]
     },
     {
+      "id": "F031",
+      "priority": "P0",
+      "name": "Collision-proof meeting identifiers",
+      "status": "done",
+      "depends_on": [
+        "F011"
+      ]
+    },
+    {
+      "id": "F032",
+      "priority": "P0",
+      "name": "End-of-meeting report with actions taken",
+      "status": "done",
+      "depends_on": [
+        "F031",
+        "F012"
+      ]
+    },
+    {
+      "id": "F033",
+      "priority": "P1",
+      "name": "Meeting history and per-meeting action ledger",
+      "status": "done",
+      "depends_on": [
+        "F032"
+      ]
+    },
+    {
+      "id": "F034",
+      "priority": "P2",
+      "name": "Floating live analysis bar (Document Picture-in-Picture)",
+      "status": "done",
+      "depends_on": [
+        "F028"
+      ]
+    },
+    {
       "id": "F019",
       "priority": "P0",
       "name": "Evaluation report and demo freeze",

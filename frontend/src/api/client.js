@@ -25,6 +25,26 @@ export async function listMeetings() {
   return data;
 }
 
+export async function getReport(meetingId) {
+  const { data } = await client.get(`/meetings/${meetingId}/report`);
+  return data;
+}
+
+/** Direct link: the browser downloads/renders markdown itself. */
+export function reportMarkdownUrl(meetingId) {
+  return `/api/meetings/${meetingId}/report.md`;
+}
+
+export async function getActionsTaken(meetingId) {
+  const { data } = await client.get(`/meetings/${meetingId}/actions`);
+  return data;
+}
+
+export async function getTranscript(meetingId) {
+  const { data } = await client.get(`/meetings/${meetingId}/transcript`);
+  return data;
+}
+
 export async function uploadMeeting({ file, title, meetingDate, participants }) {
   const form = new FormData();
   form.append("file", file);

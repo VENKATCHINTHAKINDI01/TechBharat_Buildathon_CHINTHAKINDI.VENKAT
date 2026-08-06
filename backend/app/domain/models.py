@@ -323,3 +323,103 @@ class CarriedForwardItem(BaseModel):
     memory: MemoryRecord
     similarity: float
     days_overdue: Optional[int] = None
+
+
+# ---------------------------------------------------------------------------
+# End-of-meeting report
+# ---------------------------------------------------------------------------
+
+
+class ActionTaken(BaseModel):
+    """One external action that actually happened, or was refused.
+
+    Kept separate from the item it belongs to so the report can answer
+    "what did this system DO" without the reader reconstructing it from
+    audit events.
+    """
+
+    effect: str                    # github_issue | calendar_invite | memory_index | notification
+    status: str                    # created | duplicate_suppressed | skipped | failed
+    candidate_id: str
+    summary: str = ""
+    url: Optional[str] = None
+    reference: Optional[str] = None
+    approved_by: Optional[str] = None
+    at: Optional[datetime] = None
+    error: Optional[str] = None
+
+
+class ReportItem(BaseModel):
+    """An action item as it appears in the report."""
+
+    candidate_id: str
+    text: str
+    classification: str
+    owner_name: Optional[str] = None
+    owner_participant_id: Optional[str] = None
+    due_date: Optional[date] = None
+    priority: Priority = Priority.medium
+    confidence: float = 0.0
+    gate_eligible: bool = False
+    gate_reasons: list[str] = Field(default_factory=list)
+    review_status: Optional[str] = None
+    evidence: list[EvidenceQuote] = Field(default_factory=list)
+    actions: list[ActionTaken] = Field(default_factory=list)
+
+    @property
+    def was_actioned(self) -> bool:
+        return any(a.status in ("created", "duplicate_suppressed") for a in self.actions)
+
+
+class SpeakerStat(BaseModel):
+    speaker: str
+    segments: int
+    words: int
+    share: float = 0.0   # proportion of total words
+
+
+class MeetingReport(BaseModel):
+    """The end-to-end record of one meeting.
+
+    Generated when a meeting ends and regenerated on demand, so it always
+    reflects the current state of review rather than freezing at the
+    moment the call dropped. Reports are per-meeting and keyed by
+    meeting_id, which is why meeting-id uniqueness matters so much.
+    """
+
+    meeting_id: str
+    title: str
+    meeting_date: str
+    generated_at: datetime
+    source: str = "upload"          # upload | live
+
+    executive_summary: str = ""
+    participants: list[Participant] = Field(default_factory=list)
+
+    decisions: list[ReportItem] = Field(default_factory=list)
+    open_questions: list[ReportItem] = Field(default_factory=list)
+    risks_blockers: list[ReportItem] = Field(default_factory=list)
+    action_items: list[ReportItem] = Field(default_factory=list)
+
+    actions_taken: list[ActionTaken] = Field(default_factory=list)
+    speaker_stats: list[SpeakerStat] = Field(default_factory=list)
+
+    segment_count: int = 0
+    duration_ms: int = 0
+    transcript_words: int = 0
+    unattributed_segments: int = 0
+    warnings: list[str] = Field(default_factory=list)
+
+    @property
+    def approved_count(self) -> int:
+        return sum(1 for i in self.action_items if i.was_actioned)
+
+    @property
+    def blocked_count(self) -> int:
+        return sum(1 for i in self.action_items if not i.gate_eligible)
+
+    @property
+    def pending_count(self) -> int:
+        return sum(
+            1 for i in self.action_items if i.gate_eligible and not i.review_status
+        )

@@ -111,3 +111,59 @@ table.audit code { font-size: 11px; color: var(--muted); word-break: break-all; 
 .notice { padding: 11px 14px; background: color-mix(in srgb, var(--accent) 12%, transparent); border-radius: 8px; margin-bottom: 16px; font-size: 13px; }
 .muted { color: var(--muted); font-size: 12px; }
 a { color: var(--accent); }
+
+/* ---------- floating live bar ---------- */
+.floating-anchor { position: fixed; z-index: 9999; width: 340px; }
+.floating {
+  display: flex; flex-direction: column; gap: 8px;
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 10px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: var(--text);
+}
+/* In a Picture-in-Picture window the panel IS the window. */
+.floating.pip {
+  height: 100vh; border: none; border-radius: 0; box-shadow: none;
+  background: var(--bg); padding: 12px;
+}
+.floating-head { display: flex; align-items: center; gap: 8px; user-select: none; }
+.floating-head .spacer, .floating-foot .spacer { flex: 1; }
+.floating-stats { display: flex; gap: 5px; flex-wrap: wrap; }
+.floating-feed {
+  flex: 1; min-height: 120px; max-height: 240px; overflow-y: auto;
+  background: var(--bg); border-radius: 8px; padding: 8px;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.floating.pip .floating-feed { max-height: none; }
+.floating-line { font-size: 12px; line-height: 1.45; }
+.floating-line .who {
+  display: inline-block; margin-right: 6px; font-weight: 700; font-size: 11px;
+}
+.floating-line .who.known { color: var(--ok); }
+.floating-line .who.unknown { color: var(--warn); }
+.floating-items { display: flex; flex-direction: column; gap: 6px; }
+.floating-item {
+  background: var(--bg); border-left: 2px solid var(--border);
+  border-radius: 0 6px 6px 0; padding: 6px 8px;
+}
+.floating-item.ok { border-left-color: var(--ok); }
+.floating-item.blocked { border-left-color: var(--bad); }
+.floating-foot { display: flex; align-items: center; gap: 8px; }
+.tiny { font-size: 11px; }
+button.tiny { padding: 3px 8px; font-size: 11px; }
+
+/* ---------- meeting history ---------- */
+.meeting-row {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 12px 14px; background: var(--panel-2);
+  border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 10px;
+}
+.meeting-row:hover { border-color: var(--accent); }
+.meeting-row h3 { margin: 0; font-size: 14px; }
+.meeting-row .grow { flex: 1; }
+.report-section { margin-bottom: 22px; }
+.report-section h3 {
+  font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--muted); margin: 0 0 10px;
+}
