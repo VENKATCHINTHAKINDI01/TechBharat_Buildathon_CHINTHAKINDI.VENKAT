@@ -1,5 +1,5 @@
 {
-  "project": "CommitGuard",
+  "project": "Nexvi.Meets",
   "rules": {
     "one_feature_at_a_time": true,
     "tests_required": true,

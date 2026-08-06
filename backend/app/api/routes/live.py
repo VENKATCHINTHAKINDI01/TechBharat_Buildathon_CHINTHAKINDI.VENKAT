@@ -34,7 +34,7 @@ from app.core.config import Settings
 from app.services.live import LiveSession
 from app.services.pipeline import build_extractor
 
-logger = logging.getLogger("commitguard.live")
+logger = logging.getLogger("nexvi_meets.live")
 router = APIRouter(tags=["live"])
 
 
@@ -150,7 +150,7 @@ async def live_session(
     except WebSocketDisconnect:
         # Persist whatever the meeting produced before the client vanished
         # -- losing a commitment because a laptop lid closed is exactly
-        # the failure CommitGuard exists to prevent.
+        # the failure Nexvi.Meets exists to prevent.
         if session is not None:
             try:
                 await session.process(force=True)

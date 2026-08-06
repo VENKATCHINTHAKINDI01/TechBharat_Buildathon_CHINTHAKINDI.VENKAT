@@ -1,6 +1,6 @@
-# CommitGuard — Data Contracts
+# Nexvi.Meets — Data Contracts
 
-Schemas below are the target shape for `backend/app/commitguard/models/`
+Schemas below are the target shape for `backend/app/domain/models.py`
 (Pydantic). They are defined here first (per `AGENTS.md`: "Do not modify
 shared schemas silently") and will be implemented under feature `F004`.
 This document is the source of truth; implementation must match it, and any
@@ -37,7 +37,7 @@ requirements") explicitly requires action items to carry a priority
 alongside owner/date/confidence. This field was missing from the original
 F004 schema and was added retroactively across F004/F005/F006/F007 in a
 single documented patch once the brief was available -- see `progress.md`
-for the session that introduced it. `agents/reference_pipeline.py` derives
+for the session that introduced it. `services/extraction/reference.py` derives
 it deterministically: `risk`/`blocker` kind -> `high`; `disputed`
 decisions -> `high`; `open_question` -> `low`; everything else -> `medium`.
 This is a heuristic, not a scored classifier -- revisit under F016.

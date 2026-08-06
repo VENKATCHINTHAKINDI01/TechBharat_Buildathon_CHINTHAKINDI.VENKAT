@@ -1,16 +1,16 @@
 """MongoDB repository (motor). The runtime persistence implementation.
 
-Collections (all prefixed so CommitGuard can share a database without
+Collections (all prefixed so Nexvi.Meets can share a database without
 colliding with anything else):
 
-- ``cg_meetings``        one document per uploaded meeting
-- ``cg_meeting_records`` the structured record (F011b), one per meeting
-- ``cg_items``           resolved candidate items, keyed by candidate_id
-- ``cg_review``          human review decisions, keyed by candidate_id
-- ``cg_audit``           append-only audit events
-- ``cg_issues``          created issue records, keyed by dedupe_key
+- ``nm_meetings``        one document per uploaded meeting
+- ``nm_meeting_records`` the structured record (F011b), one per meeting
+- ``nm_items``           resolved candidate items, keyed by candidate_id
+- ``nm_review``          human review decisions, keyed by candidate_id
+- ``nm_audit``           append-only audit events
+- ``nm_issues``          created issue records, keyed by dedupe_key
 
-``ensure_indexes`` creates a **unique** index on ``cg_issues.dedupe_key``.
+``ensure_indexes`` creates a **unique** index on ``nm_issues.dedupe_key``.
 That unique constraint -- not application logic alone -- is what makes
 duplicate suppression (F015) hold even under concurrent approvals.
 """
@@ -63,24 +63,24 @@ class MongoRepository:
         self._db = db if db is not None else get_database()
 
     async def ensure_indexes(self) -> None:
-        await self._db.cg_issues.create_index("dedupe_key", unique=True)
-        await self._db.cg_items.create_index("candidate_id", unique=True)
-        await self._db.cg_items.create_index("meeting_id")
-        await self._db.cg_audit.create_index([("meeting_id", 1), ("created_at", 1)])
-        await self._db.cg_review.create_index("candidate_id", unique=True)
-        await self._db.cg_meetings.create_index("meeting_id", unique=True)
-        await self._db.cg_meeting_records.create_index("meeting_id", unique=True)
+        await self._db.nm_issues.create_index("dedupe_key", unique=True)
+        await self._db.nm_items.create_index("candidate_id", unique=True)
+        await self._db.nm_items.create_index("meeting_id")
+        await self._db.nm_audit.create_index([("meeting_id", 1), ("created_at", 1)])
+        await self._db.nm_review.create_index("candidate_id", unique=True)
+        await self._db.nm_meetings.create_index("meeting_id", unique=True)
+        await self._db.nm_meeting_records.create_index("meeting_id", unique=True)
         # Same unique-index guarantee as issues: the database, not app
         # logic, is what stops a duplicate calendar invite.
-        await self._db.cg_calendar.create_index("dedupe_key", unique=True)
-        await self._db.cg_notifications.create_index("meeting_id")
-        await self._db.cg_agent_runs.create_index("meeting_id", unique=True)
+        await self._db.nm_calendar.create_index("dedupe_key", unique=True)
+        await self._db.nm_notifications.create_index("meeting_id")
+        await self._db.nm_agent_runs.create_index("meeting_id", unique=True)
 
     # --- meetings ---
     async def create_meeting(
         self, meeting_id: str, title: str, meeting_date: str, participants: list[Participant]
     ) -> None:
-        await self._db.cg_meetings.update_one(
+        await self._db.nm_meetings.update_one(
             {"meeting_id": meeting_id},
             {
                 "$set": {
@@ -94,21 +94,21 @@ class MongoRepository:
         )
 
     async def get_meeting(self, meeting_id: str) -> Optional[dict]:
-        return _strip_id(await self._db.cg_meetings.find_one({"meeting_id": meeting_id}))
+        return _strip_id(await self._db.nm_meetings.find_one({"meeting_id": meeting_id}))
 
     async def list_meetings(self) -> list[dict]:
-        return [_strip_id(d) async for d in self._db.cg_meetings.find()]
+        return [_strip_id(d) async for d in self._db.nm_meetings.find()]
 
     # --- meeting record ---
     async def save_meeting_record(self, record: MeetingRecord) -> None:
-        await self._db.cg_meeting_records.update_one(
+        await self._db.nm_meeting_records.update_one(
             {"meeting_id": record.meeting_id},
             {"$set": record.model_dump(mode="json")},
             upsert=True,
         )
 
     async def get_meeting_record(self, meeting_id: str) -> Optional[MeetingRecord]:
-        doc = _strip_id(await self._db.cg_meeting_records.find_one({"meeting_id": meeting_id}))
+        doc = _strip_id(await self._db.nm_meeting_records.find_one({"meeting_id": meeting_id}))
         return MeetingRecord.model_validate(doc) if doc else None
 
     # --- items ---
@@ -119,15 +119,15 @@ class MongoRepository:
     async def list_items(self, meeting_id: str) -> list[ResolvedItem]:
         return [
             ResolvedItem.model_validate(_strip_id(d))
-            async for d in self._db.cg_items.find({"meeting_id": meeting_id}).sort("candidate_id", 1)
+            async for d in self._db.nm_items.find({"meeting_id": meeting_id}).sort("candidate_id", 1)
         ]
 
     async def get_item(self, candidate_id: str) -> Optional[ResolvedItem]:
-        doc = _strip_id(await self._db.cg_items.find_one({"candidate_id": candidate_id}))
+        doc = _strip_id(await self._db.nm_items.find_one({"candidate_id": candidate_id}))
         return ResolvedItem.model_validate(doc) if doc else None
 
     async def update_item(self, item: ResolvedItem) -> None:
-        await self._db.cg_items.update_one(
+        await self._db.nm_items.update_one(
             {"candidate_id": item.candidate_id},
             {"$set": item.model_dump(mode="json")},
             upsert=True,
@@ -135,30 +135,30 @@ class MongoRepository:
 
     # --- review ---
     async def save_review_decision(self, decision: ReviewDecision) -> None:
-        await self._db.cg_review.update_one(
+        await self._db.nm_review.update_one(
             {"candidate_id": decision.candidate_id},
             {"$set": decision.model_dump(mode="json")},
             upsert=True,
         )
 
     async def get_review_decision(self, candidate_id: str) -> Optional[ReviewDecision]:
-        doc = _strip_id(await self._db.cg_review.find_one({"candidate_id": candidate_id}))
+        doc = _strip_id(await self._db.nm_review.find_one({"candidate_id": candidate_id}))
         return ReviewDecision.model_validate(doc) if doc else None
 
     # --- audit (append-only: insert, never update) ---
     async def append_audit(self, event: AuditEvent) -> None:
-        await self._db.cg_audit.insert_one(event.model_dump(mode="json"))
+        await self._db.nm_audit.insert_one(event.model_dump(mode="json"))
 
     async def list_audit(self, meeting_id: str) -> list[AuditEvent]:
         return [
             AuditEvent.model_validate(_strip_id(d))
-            async for d in self._db.cg_audit.find({"meeting_id": meeting_id}).sort("created_at", 1)
+            async for d in self._db.nm_audit.find({"meeting_id": meeting_id}).sort("created_at", 1)
         ]
 
     # --- issue records ---
     async def save_issue_record(self, record: GitHubIssueRecord) -> None:
         try:
-            await self._db.cg_issues.insert_one(record.model_dump(mode="json"))
+            await self._db.nm_issues.insert_one(record.model_dump(mode="json"))
         except DuplicateKeyError:
             # Another approval already created an issue for this dedupe_key.
             # Swallowing this is correct and is the point of the unique
@@ -166,52 +166,52 @@ class MongoRepository:
             pass
 
     async def find_issue_by_dedupe_key(self, dedupe_key: str) -> Optional[GitHubIssueRecord]:
-        doc = _strip_id(await self._db.cg_issues.find_one({"dedupe_key": dedupe_key}))
+        doc = _strip_id(await self._db.nm_issues.find_one({"dedupe_key": dedupe_key}))
         return GitHubIssueRecord.model_validate(doc) if doc else None
 
     async def list_issue_records(self, meeting_id: str) -> list[GitHubIssueRecord]:
         return [
             GitHubIssueRecord.model_validate(_strip_id(d))
-            async for d in self._db.cg_issues.find({"meeting_id": meeting_id})
+            async for d in self._db.nm_issues.find({"meeting_id": meeting_id})
         ]
 
     # --- calendar events ---
     async def save_calendar_event(self, record: CalendarEventRecord) -> None:
         try:
-            await self._db.cg_calendar.insert_one(record.model_dump(mode="json"))
+            await self._db.nm_calendar.insert_one(record.model_dump(mode="json"))
         except DuplicateKeyError:
             pass  # first write wins; see save_issue_record
 
     async def find_calendar_event_by_dedupe_key(
         self, dedupe_key: str
     ) -> Optional[CalendarEventRecord]:
-        doc = _strip_id(await self._db.cg_calendar.find_one({"dedupe_key": dedupe_key}))
+        doc = _strip_id(await self._db.nm_calendar.find_one({"dedupe_key": dedupe_key}))
         return CalendarEventRecord.model_validate(doc) if doc else None
 
     async def list_calendar_events(self, meeting_id: str) -> list[CalendarEventRecord]:
         return [
             CalendarEventRecord.model_validate(_strip_id(d))
-            async for d in self._db.cg_calendar.find({"meeting_id": meeting_id})
+            async for d in self._db.nm_calendar.find({"meeting_id": meeting_id})
         ]
 
     # --- notifications ---
     async def save_notification(self, record: NotificationRecord) -> None:
-        await self._db.cg_notifications.insert_one(record.model_dump(mode="json"))
+        await self._db.nm_notifications.insert_one(record.model_dump(mode="json"))
 
     async def list_notifications(self, meeting_id: str) -> list[NotificationRecord]:
         return [
             NotificationRecord.model_validate(_strip_id(d))
-            async for d in self._db.cg_notifications.find({"meeting_id": meeting_id})
+            async for d in self._db.nm_notifications.find({"meeting_id": meeting_id})
         ]
 
     # --- agent runs ---
     async def save_agent_run(self, run: AgentRun) -> None:
-        await self._db.cg_agent_runs.update_one(
+        await self._db.nm_agent_runs.update_one(
             {"meeting_id": run.meeting_id},
             {"$set": run.model_dump(mode="json")},
             upsert=True,
         )
 
     async def get_agent_run(self, meeting_id: str) -> Optional[AgentRun]:
-        doc = _strip_id(await self._db.cg_agent_runs.find_one({"meeting_id": meeting_id}))
+        doc = _strip_id(await self._db.nm_agent_runs.find_one({"meeting_id": meeting_id}))
         return AgentRun.model_validate(doc) if doc else None

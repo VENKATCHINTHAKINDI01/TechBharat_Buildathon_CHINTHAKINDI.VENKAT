@@ -17,7 +17,7 @@ async def health() -> dict:
         "status": "ok",
         "app": settings.app_name,
         "environment": settings.environment,
-        "component": "commitguard",
+        "component": "nexvi_meets",
     }
 
 

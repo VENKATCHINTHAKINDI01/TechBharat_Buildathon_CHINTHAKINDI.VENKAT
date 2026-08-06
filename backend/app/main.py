@@ -1,4 +1,4 @@
-"""CommitGuard FastAPI application factory."""
+"""Nexvi.Meets FastAPI application factory."""
 from __future__ import annotations
 
 import logging
@@ -11,7 +11,7 @@ from app.adapters.trackers.base import IssueTrackerError
 from app.api.routes import health, live, meetings, review, system
 from app.core.config import MissingCredentialError, get_settings
 
-logger = logging.getLogger("commitguard")
+logger = logging.getLogger("nexvi_meets")
 
 
 def create_app() -> FastAPI:
@@ -66,7 +66,7 @@ def create_app() -> FastAPI:
     @application.on_event("startup")
     async def _startup() -> None:
         # Index creation is idempotent and cheap; the unique index on
-        # cg_issues.dedupe_key is what enforces duplicate suppression, so
+        # nm_issues.dedupe_key is what enforces duplicate suppression, so
         # a failure here is loud rather than silent.
         if not settings.mongo_uri:
             logger.warning(

@@ -6,7 +6,7 @@ payload actually sent are provably the same object.
 
 Evidence is embedded in the issue body on purpose: the resulting GitHub
 issue is self-justifying -- anyone reading it later can see the verbatim
-transcript lines the commitment came from without opening CommitGuard.
+transcript lines the commitment came from without opening Nexvi.Meets.
 """
 from __future__ import annotations
 
@@ -40,11 +40,11 @@ def build_issue_payload(
         lines.append("")
     lines.append("---")
     lines.append(
-        f"Created by CommitGuard from meeting *{meeting_title}* "
+        f"Created by Nexvi.Meets from meeting *{meeting_title}* "
         f"(`{item.meeting_id}`, candidate `{item.candidate_id}`) after human approval."
     )
 
-    labels = ["commitguard", f"priority:{item.priority.value}"]
+    labels = ["nexvi_meets", f"priority:{item.priority.value}"]
 
     assignees: list[str] = []
     if github_login_by_participant and item.owner_participant_id:

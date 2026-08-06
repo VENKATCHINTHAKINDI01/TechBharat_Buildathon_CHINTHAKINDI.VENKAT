@@ -1,4 +1,4 @@
-# CommitGuard — Acceptance Tests
+# Nexvi.Meets — Acceptance Tests
 
 One section per feature. Each acceptance test must be automatable (pytest
 for backend, a scripted check for repo-level features) and is the bar
@@ -9,8 +9,10 @@ for backend, a scripted check for repo-level features) and is the bar
 - `bash init.sh` exits 0 from a clean checkout.
 - `bash scripts/verify.sh` exits 0.
 - `GET /health` returns HTTP 200 with `status: ok`.
-- `GET /commitguard/health` returns HTTP 200 with `status: ok` and
-  `component: commitguard`.
+- `GET /health` returns HTTP 200 with `status: ok` and
+  `component: nexvi_meets`.
+- `GET /readiness` reports which integrations are configured, which
+  extractor and normalizer are active, and the agent runtime.
 - `feature_list.json` is valid JSON and validates against the expected
   shape (project name, non-empty features list, each feature has
   `id`, `priority`, `name`, `status`, `depends_on`).
@@ -81,7 +83,7 @@ for backend, a scripted check for repo-level features) and is the bar
 - A transcript where ownership is reassigned mid-thread resolves to the
   new owner on the final candidate (`owner_reassignment.txt` fixture).
 - Note on `contradiction_of` vs `contradiction_note`: the reference
-  implementation (F005/F006/F009, `reference_pipeline.py`) collapses each
+  implementation (F005/F006/F009, `services/extraction/reference.py`) collapses each
   renegotiated thread into a single final candidate and uses
   `contradiction_note` for human-readable context rather than emitting two
   linked candidates via `contradiction_of`. See "Known failures /

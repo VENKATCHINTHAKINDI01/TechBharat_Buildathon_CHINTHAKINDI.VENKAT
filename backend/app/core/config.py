@@ -1,4 +1,4 @@
-"""Single source of configuration for CommitGuard.
+"""Single source of configuration for Nexvi.Meets.
 
 Design decision (recorded in docs/architecture.md): every field has a
 safe default so that importing the app never explodes, but the adapters
@@ -30,13 +30,13 @@ class Settings(BaseSettings):
     )
 
     # --- App ---
-    app_name: str = "CommitGuard"
+    app_name: str = "Nexvi.Meets"
     environment: str = "development"
     cors_origins: str = "http://localhost:5173"
 
     # --- MongoDB (required at runtime) ---
     mongo_uri: str = ""
-    mongo_db_name: str = "commitguard"
+    mongo_db_name: str = "nexvi_meets"
 
     # --- Groq (primary extractor; falls back to the deterministic one) ---
     groq_api_key: str = ""
@@ -78,7 +78,7 @@ class Settings(BaseSettings):
     def require_mongo_uri(self) -> str:
         if not self.mongo_uri:
             raise MissingCredentialError(
-                "MONGO_URI is not set. CommitGuard needs a real MongoDB to persist "
+                "MONGO_URI is not set. Nexvi.Meets needs a real MongoDB to persist "
                 "candidates and the audit log. Copy backend/.env.example to "
                 "backend/.env and set MONGO_URI, or run `docker compose up -d mongo` "
                 "and use mongodb://localhost:27017."

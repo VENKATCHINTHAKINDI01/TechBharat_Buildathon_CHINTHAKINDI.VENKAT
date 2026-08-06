@@ -1,4 +1,4 @@
-# CommitGuard
+# Nexvi.Meets
 
 **An evidence-backed meeting commitment agent.** Built for the TechBharat
 Cohort #2 Buildathon, Use Case B (*Agentic AI Meeting Assistant*).
@@ -6,7 +6,7 @@ Cohort #2 Buildathon, Use Case B (*Agentic AI Meeting Assistant*).
 > The LLM may interpret the meeting.
 > **Deterministic code decides whether an external action is allowed.**
 
-Most meeting tools summarize. CommitGuard decides what is actually a
+Most meeting tools summarize. Nexvi.Meets decides what is actually a
 *commitment* — telling a real one apart from a suggestion, a dispute, a
 rejection, or something that got cancelled twenty minutes later — resolves
 who owns it and by when, and takes real action **only** after a human
@@ -69,7 +69,7 @@ Open <http://localhost:5173>. The status bar shows which integrations are
 live. API docs at <http://localhost:8000/docs>.
 
 > **Use a sandbox GitHub repo.** The brief forbids demoing against a live
-> production tracker, and CommitGuard creates real issues.
+> production tracker, and Nexvi.Meets creates real issues.
 
 ### What happens when a credential is missing
 
@@ -141,7 +141,7 @@ application logic, so it holds under concurrent approvals.
 
 ## Code-switched speech (English + Telugu)
 
-Indian standups mix languages mid-sentence. CommitGuard handles one pair
+Indian standups mix languages mid-sentence. Nexvi.Meets handles one pair
 properly rather than five badly:
 
 ```

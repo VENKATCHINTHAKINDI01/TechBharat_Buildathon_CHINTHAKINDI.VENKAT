@@ -1,11 +1,11 @@
-"""CommitGuard Pydantic schemas.
+"""Nexvi.Meets Pydantic schemas.
 
 Source of truth for these shapes is ``docs/data-contracts.md`` at the repo
 root. Any field added/changed here must be a deliberate, matching edit to
 that document in the same change (AGENTS.md scope rule: "Do not modify
 shared schemas silently").
 
-These are CommitGuard's own models -- distinct from Nexvi.Meets'
+These are Nexvi.Meets's own models -- distinct from Nexvi.Meets'
 ``app.models.meeting`` / ``app.models.action_item`` -- per
 ``docs/architecture.md``.
 """
@@ -107,7 +107,7 @@ class TranscriptSegment(BaseModel):
     is an optional English rendering (Sarvam) used purely as extraction
     input to improve accuracy on code-switched speech.
 
-    Keeping them separate is what lets CommitGuard translate for
+    Keeping them separate is what lets Nexvi.Meets translate for
     comprehension without ever weakening the audit trail: a reviewer and
     a judge always see the words that were actually spoken.
     """

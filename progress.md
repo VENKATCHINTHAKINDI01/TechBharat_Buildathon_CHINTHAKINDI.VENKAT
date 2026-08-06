@@ -13,7 +13,7 @@ meeting record, reviewed by a human, and then turned into a GitHub issue,
 a Calendar invite, a cross-meeting memory entry and a notification record
 — each independently gated, idempotent and audited.
 
-The pre-CommitGuard Nexvi.Meets tree has been fully absorbed and removed;
+The original Nexvi.Meets prototype tree has been fully absorbed and removed;
 everything worth keeping now lives in the live codebase with tests.
 
 Verification: `bash scripts/verify.sh` exits 0; **353 tests pass** with no
@@ -166,7 +166,7 @@ deleted** — everything of value now lives in the live codebase with tests.
 Test count went 290 → 353. Two failures during the work were genuine and
 informative: the legacy-import guard correctly flagged the new `app.agents`
 / `app.tools` packages (the guard was too broad and was narrowed to the
-real pre-CommitGuard modules), and the malformed-transcript test caught
+real legacy prototype modules), and the malformed-transcript test caught
 that agents now capture errors into state rather than raising — so the
 upload route needed to translate a captured error into a 422 instead of
 silently returning success.

@@ -1,4 +1,4 @@
-# CommitGuard — Maker–Checker Loop
+# Nexvi.Meets — Maker–Checker Loop
 
 Two roles, one feature at a time, per `AGENTS.md`'s session lifecycle.
 Prompts for each role live in `prompts/maker.md` and `prompts/checker.md`.

@@ -1,4 +1,4 @@
-# CommitGuard — Architecture
+# Nexvi.Meets — Architecture
 
 ## Shape
 
@@ -125,7 +125,7 @@ transcript.
 Both drive the **same** `Agent` objects, so behaviour cannot diverge —
 only the scheduler differs. The archived code carried a warning in its own
 docstring that LangGraph's API shifts between minor versions; rather than
-choose between recognisability and reliability, CommitGuard has both and
+choose between recognisability and reliability, Nexvi.Meets has both and
 degrades the scheduler, never the pipeline.
 
 ## Four gated side effects
@@ -138,7 +138,7 @@ succeeded. A reviewer opts into each per approval; the default is GitHub
 alone, so approving never fans out further than the person expected.
 
 Duplicate suppression is enforced by **unique database indexes** on
-`cg_issues.dedupe_key` and `cg_calendar.dedupe_key`, not by application
+`nm_issues.dedupe_key` and `nm_calendar.dedupe_key`, not by application
 logic alone, so it holds under concurrent approvals.
 
 ## Failure posture

@@ -1,7 +1,7 @@
 """Code-switch normalization (Sarvam), restored with a safety redesign.
 
 The legacy tool translated transcript text to English in place. That is
-unsafe here: CommitGuard's evidence quotes must be **verbatim substrings
+unsafe here: Nexvi.Meets's evidence quotes must be **verbatim substrings
 of what was actually said**, and the safety gate blocks any item whose
 citations don't survive that check. Translating in place would have
 silently destroyed every quote on a code-switched transcript.
@@ -29,7 +29,7 @@ from typing import Protocol, runtime_checkable
 from app.core.config import Settings, get_settings
 from app.domain.models import TranscriptSegment
 
-logger = logging.getLogger("commitguard.normalization")
+logger = logging.getLogger("nexvi_meets.normalization")
 
 
 @runtime_checkable

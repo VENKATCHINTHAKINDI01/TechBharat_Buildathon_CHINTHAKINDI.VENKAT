@@ -1,7 +1,7 @@
-# CommitGuard — Product Spec
+# Nexvi.Meets — Product Spec
 
 Source: *TechBharat Cohort #2 Buildathon Use Cases*, Use Case B ("Agentic
-AI Meeting Assistant"). CommitGuard is our entry for that track; the
+AI Meeting Assistant"). Nexvi.Meets is our entry for that track; the
 must-have requirements, constraints, and success metrics in this document
 are transcribed from that brief, not invented independently -- see
 `progress.md` for the session that reconciled the two.
@@ -16,7 +16,7 @@ task trackers full of noise, or worse, silently drop real commitments.
 
 ## Product
 
-CommitGuard ingests a meeting transcript and produces a structured meeting
+Nexvi.Meets ingests a meeting transcript and produces a structured meeting
 record -- an executive summary, decisions, open questions, risks/blockers,
 and **candidate action items** -- where every action item is backed by
 verbatim transcript evidence, a resolved owner, a resolved due date, a
@@ -27,13 +27,13 @@ GitHub Issues. Nothing reaches GitHub without that approval.
 
 The brief allows integrating with any one of Jira, Linear, Asana, GitHub
 Issues, Slack, Teams, Google Calendar, or email, and is explicit that "one
-deep, reliable integration beats four shallow ones." CommitGuard's choice
+deep, reliable integration beats four shallow ones." Nexvi.Meets's choice
 is GitHub Issues (`F014`) -- consistent with `AGENTS.md`'s existing scope
 rule against adding Slack/Jira/Calendar/email before all P0/P1 work is
 done.
 
 The differentiator is **commitment integrity**, not summarization quality:
-CommitGuard would rather surface zero items than surface a wrong owner, a
+Nexvi.Meets would rather surface zero items than surface a wrong owner, a
 fabricated date, or a task nobody actually committed to.
 
 ## Users
@@ -46,7 +46,7 @@ fabricated date, or a task nobody actually committed to.
 ## Core user flow
 
 1. Organizer uploads a transcript (`.txt`, `.vtt`, or `.srt`).
-2. CommitGuard normalizes it into speaker-attributed segments.
+2. Nexvi.Meets normalizes it into speaker-attributed segments.
 3. An LLM extraction pass proposes candidate items with quotes as evidence.
 4. A validation pass classifies each candidate and flags contradictions
    (disagreement, cancellation, reassignment, deadline change).
@@ -70,7 +70,7 @@ Live audio, Slack/Jira/Calendar/email integrations, cross-meeting memory,
 reminders, and analytics are out of scope. See `AGENTS.md` build priorities.
 Audio/video transcription is a brief-allowed stretch ("you own the
 transcription step" if attempted) but out of scope until P0/P1 pass --
-CommitGuard accepts transcript files (txt/vtt/srt) directly, which the
+Nexvi.Meets accepts transcript files (txt/vtt/srt) directly, which the
 brief's FAQ explicitly permits ("You can also accept transcripts directly
 and skip audio entirely").
 
@@ -80,7 +80,7 @@ and skip audio entirely").
 
 - Upload a fixture transcript with a mix of confirmed commitments,
   suggestions, disputes, and a cancellation.
-- CommitGuard extracts and classifies all of them correctly against the
+- Nexvi.Meets extracts and classifies all of them correctly against the
   evaluation dataset (`F016`).
 - Only `confirmed`, fully-resolved, evidence-backed, non-contradicted items
   above the confidence threshold are shown as gate-eligible.

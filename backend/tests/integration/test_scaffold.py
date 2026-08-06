@@ -1,6 +1,6 @@
 """F001 acceptance tests -- see docs/acceptance-tests.md#f001.
 
-CommitGuard is now the application itself rather than a router mounted
+Nexvi.Meets is now the application itself rather than a router mounted
 inside the legacy Nexvi.Meets app (see legacy/README.md), so the health
 endpoint lives at /health.
 """
@@ -21,8 +21,8 @@ def test_health_endpoint():
     assert resp.status_code == 200
     body = resp.json()
     assert body["status"] == "ok"
-    assert body["component"] == "commitguard"
-    assert body["app"] == "CommitGuard"
+    assert body["component"] == "nexvi_meets"
+    assert body["app"] == "Nexvi.Meets"
 
 
 def test_readiness_reports_integration_configuration():
@@ -47,7 +47,7 @@ def test_readiness_reports_integration_configuration():
 def test_feature_list_json_is_valid():
     data = json.loads((REPO_ROOT / "feature_list.json").read_text())
 
-    assert data["project"] == "CommitGuard"
+    assert data["project"] == "Nexvi.Meets"
     ids = [f["id"] for f in data["features"]]
     assert len(ids) == len(set(ids)), "duplicate feature ids"
     assert "F001" in ids
@@ -60,9 +60,9 @@ def test_feature_list_json_is_valid():
 
 
 def test_no_legacy_package_remains_importable():
-    """The pre-CommitGuard tree was absorbed and deleted. `app.agents` and
-    `app.tools` are now first-class CommitGuard packages; what must NOT
-    exist is the old ungated Nexvi.Meets code."""
+    """The original prototype tree was absorbed and deleted. `app.agents`
+    and `app.tools` are now first-class packages; what must NOT exist is
+    the old ungated prototype code that had no safety gate."""
     import app.main  # noqa: F401
 
     leaked = [
@@ -70,7 +70,7 @@ def test_no_legacy_package_remains_importable():
         for m in sys.modules
         if m.startswith(("app.review", "app.roster", "app.db", "app.integrations", "app.websocket"))
     ]
-    assert leaked == [], f"pre-CommitGuard modules imported: {leaked}"
+    assert leaked == [], f"legacy prototype modules imported: {leaked}"
 
 
 def test_side_effecting_tools_are_exactly_the_four_expected():

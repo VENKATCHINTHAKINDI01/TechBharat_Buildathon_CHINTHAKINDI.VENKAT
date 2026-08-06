@@ -1,7 +1,7 @@
 """F014: the issue-tracker seam -- the only way out to the real world.
 
 The brief requires "at least one genuine side effect through a tool
-integration"; CommitGuard's is GitHub Issues. This module defines the
+integration"; Nexvi.Meets's is GitHub Issues. This module defines the
 narrow interface that side effect travels through, plus the payload
 shape a human reviewer approves.
 

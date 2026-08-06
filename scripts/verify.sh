@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# CommitGuard deterministic verification.
+# Nexvi.Meets deterministic verification.
 # Exits 0 only if the repository is genuinely in a passing, runnable state.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -12,7 +12,7 @@ import json
 from pathlib import Path
 
 data = json.loads(Path("feature_list.json").read_text())
-assert data.get("project") == "CommitGuard", "project name mismatch"
+assert data.get("project") == "Nexvi.Meets", "project name mismatch"
 features = data.get("features")
 assert isinstance(features, list) and features, "no features"
 

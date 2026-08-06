@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-echo "== CommitGuard initialization =="
+echo "== Nexvi.Meets initialization =="
 if [ ! -f "AGENTS.md" ]; then
   echo "ERROR: run from repository root"
   exit 1
@@ -19,7 +19,7 @@ import json
 from pathlib import Path
 p = Path("feature_list.json")
 data = json.loads(p.read_text())
-assert data["project"] == "CommitGuard"
+assert data["project"] == "Nexvi.Meets"
 assert len(data["features"]) > 0
 print(f"features: {len(data['features'])}")
 PY

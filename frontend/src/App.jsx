@@ -25,7 +25,7 @@ export default function App() {
   return (
     <div className="app">
       <header className="masthead">
-        <h1>CommitGuard</h1>
+        <h1>Nexvi.Meets</h1>
         <span className="pill accent">commitment integrity, not summarization</span>
       </header>
       <p className="tagline">

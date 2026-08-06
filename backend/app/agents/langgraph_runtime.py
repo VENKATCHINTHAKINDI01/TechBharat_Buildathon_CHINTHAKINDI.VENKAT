@@ -23,7 +23,7 @@ from app.agents.base import Agent, AgentContext, PipelineState, execute
 from app.agents.orchestrator import HUMAN_REVIEW, AgentGraph, build_graph
 from app.domain.models import AgentRun, AgentStatus, AgentStep, AuditStage
 
-logger = logging.getLogger("commitguard.agents")
+logger = logging.getLogger("nexvi_meets.agents")
 
 
 class LangGraphUnavailable(RuntimeError):

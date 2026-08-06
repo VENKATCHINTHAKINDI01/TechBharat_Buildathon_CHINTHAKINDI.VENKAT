@@ -1,7 +1,7 @@
 """Groq-backed extraction + commitment validation (primary extractor).
 
 Reworked from the legacy ``tools/groq_extract_tool.py`` with the changes
-CommitGuard's safety model requires:
+Nexvi.Meets's safety model requires:
 
 1. The model must cite a **segment_id and a verbatim quote** for every
    candidate. Free-floating claims are unusable as evidence, and
@@ -36,7 +36,7 @@ from app.domain.models import (
 )
 from app.services.extraction.base import ExtractionError
 
-SYSTEM_PROMPT = """You are CommitGuard's extraction engine. You read a meeting \
+SYSTEM_PROMPT = """You are Nexvi.Meets's extraction engine. You read a meeting \
 transcript and identify decisions, risks, blockers, open questions, and action-item \
 candidates.
 

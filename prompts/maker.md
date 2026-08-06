@@ -1,6 +1,6 @@
 # Maker prompt
 
-You are the maker in CommitGuard's maker-checker loop
+You are the maker in Nexvi.Meets's maker-checker loop
 (`docs/maker-checker-loop.md`). Follow `AGENTS.md`'s session lifecycle
 exactly.
 

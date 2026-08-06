@@ -7,7 +7,7 @@ with three changes:
    call runs in a thread) — the rest of the app is async and should not be
    stalled by an HTTP round trip.
 2. It never invents a due date. The legacy version defaulted a missing
-   deadline to "tomorrow"; CommitGuard's gate already refuses to approve an
+   deadline to "tomorrow"; Nexvi.Meets's gate already refuses to approve an
    item with an unresolved date, so a missing date here is a bug worth
    raising rather than papering over.
 3. Failures raise ``CalendarError`` instead of returning partial results.

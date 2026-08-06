@@ -5,7 +5,7 @@ lives in ``app/services`` and ``app/adapters``; these wrappers only make
 it addressable by name and mark which ones touch the outside world.
 
 Four tools are side-effecting. Those four are the entire external surface
-of CommitGuard, and none of them can be invoked through the registry
+of Nexvi.Meets, and none of them can be invoked through the registry
 without a passing gate decision plus a human approval:
 
     github_issue     create a GitHub issue

@@ -1,8 +1,8 @@
-# AGENTS.md — CommitGuard Buildathon Harness
+# AGENTS.md — Nexvi.Meets Buildathon Harness
 
 ## Mission
 
-Build **CommitGuard**, an evidence-backed meeting commitment agent for the TechBharat Buildathon.
+Build **Nexvi.Meets**, an evidence-backed meeting commitment agent for the TechBharat Buildathon.
 
 The product must:
 
@@ -166,15 +166,17 @@ Next recommended feature:
 
 ## Relationship to the existing Nexvi.Meets codebase
 
-CommitGuard is built **inside** the existing `backend/` (FastAPI/LangGraph) and
+Nexvi.Meets is built **inside** the existing `backend/` (FastAPI/LangGraph) and
 `frontend/` (React/Vite) trees rather than as a parallel project. It lives under
 its own namespace so it can be developed and tested without disturbing the
 existing Nexvi.Meets meeting-summarization code:
 
-- `backend/app/commitguard/` — CommitGuard package (models, agents, tools, routes).
-- `frontend/src/commitguard/` — CommitGuard UI (review screen, evidence drawer).
+- `backend/app/` — the application: `core`, `domain`, `tools`, `agents`,
+  `services`, `adapters`, `api`. See `docs/architecture.md`.
+- `frontend/src/` — the review UI (review screen, evidence drawer, agent
+  trace, live panel).
 
 Shared infrastructure (Mongo connection, Chroma client, base FastAPI app,
-Settings) may be reused, but CommitGuard's own schemas, safety gate, and
+Settings) may be reused, but Nexvi.Meets's own schemas, safety gate, and
 GitHub tool must not be merged into or silently altered by Nexvi.Meets code,
 and vice versa.
