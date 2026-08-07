@@ -32,6 +32,7 @@ export default function FloatingBar({
   onResume,
   onEnd,
   onClose,
+  onOpenMeeting,
 }) {
   const [pipWindow, setPipWindow] = useState(null);
   const [pos, setPos] = useState({ x: window.innerWidth - 390, y: 76 });
@@ -103,6 +104,7 @@ export default function FloatingBar({
 
   const eligible = candidates.filter((c) => c.gate.eligible).length;
   const recent = segments.slice(-14);
+  const away = Boolean(onOpenMeeting);
 
   const body = (
     <div className={pipWindow ? "floating pip" : "floating"}>
@@ -113,14 +115,31 @@ export default function FloatingBar({
           <div className="tiny muted">{paused ? "paused" : "listening"}</div>
         </div>
         <span className="spacer" />
+        {/* Only offered when you are somewhere else: the bar now follows
+            you across tabs, so it has to be able to take you back. */}
+        {onOpenMeeting && !pipWindow && (
+          <button
+            className="ghost tiny"
+            onClick={onOpenMeeting}
+            title="Open the meeting view"
+            aria-label="Open the meeting view"
+          >
+            <span aria-hidden="true">↗</span>
+          </button>
+        )}
         {!pipWindow && supportsPip && (
-          <button className="ghost tiny" onClick={openPip} title="Keep this on top of your meeting">
-            ⧉
+          <button
+            className="ghost tiny"
+            onClick={openPip}
+            title="Keep this on top of your meeting"
+            aria-label="Pop out so Naina stays on top of your meeting"
+          >
+            <span aria-hidden="true">⧉</span>
           </button>
         )}
         {onClose && !pipWindow && (
-          <button className="ghost tiny" onClick={onClose} title="Hide">
-            ✕
+          <button className="ghost tiny" onClick={onClose} title="Hide" aria-label="Hide">
+            <span aria-hidden="true">✕</span>
           </button>
         )}
       </div>
@@ -196,7 +215,13 @@ export default function FloatingBar({
       <div className="floating-foot">
         <span className="tiny muted" title={meetingId}>{meetingId}</span>
         <span className="spacer" />
-        <span className="tiny muted">nothing is created without you</span>
+        {away ? (
+          <button className="ghost tiny" onClick={onOpenMeeting}>
+            Open meeting →
+          </button>
+        ) : (
+          <span className="tiny muted">nothing is created without you</span>
+        )}
       </div>
     </div>
   );

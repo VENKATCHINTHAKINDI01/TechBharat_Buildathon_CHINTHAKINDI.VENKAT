@@ -462,6 +462,17 @@
       ]
     },
     {
+      "id": "F048",
+      "priority": "P0",
+      "name": "Live session survives navigation; floating bar on every tab",
+      "status": "done",
+      "depends_on": [
+        "F032",
+        "F034",
+        "F038"
+      ]
+    },
+    {
       "id": "F019",
       "priority": "P0",
       "name": "Evaluation report and demo freeze",

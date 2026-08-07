@@ -513,6 +513,40 @@ substitute. **Layout and colour have still not been checked by eye.**
 
 Test count 526 backend + 15 frontend.
 
+### 2026-08-06 — Session 12 (a meeting that survives navigation)
+
+Asked for the floating bar to appear on the meetings tab too. Checking
+first turned up something worse than a missing bar: **switching tabs
+mid-meeting ended the recording.**
+
+`App` renders `{view === "live" && <LivePanel/>}`, and `LivePanel` owned
+the websocket and the recorders. Navigating away unmounted it, and its
+cleanup closed the socket and stopped the microphone. Nothing said so —
+you came back to a dead session and a partial transcript. On a demo, that
+is the sort of thing you discover in front of the judges.
+
+**F048.** The session moved into `LiveSessionProvider`, mounted above the
+view switch. A meeting is not a property of a screen. Teardown now runs
+on real page unload rather than on every navigation, and `LivePanel`
+became a pure view over shared state. The floating bar is rendered by the
+app, so it follows onto every tab with pause/end still wired to a session
+that is genuinely still running, plus an "Open meeting" affordance and a
+masthead pill so a live recording cannot be forgotten about.
+
+Also added a `beforeunload` guard while recording: closing the tab loses
+audio that cannot be recovered, so the browser gets to ask first. Only
+while actually recording — a confirm dialog on every navigation would be
+its own kind of rude.
+
+Eight new tests drive a fake websocket through the real component tree
+and assert the socket stays open, the recorders keep running, and the
+controls still work from another tab. One of them failed for a real
+reason: the bar's icon-only buttons had only a `title`, so their
+accessible name was the glyph — a screen reader announced "✕". Fixed with
+proper `aria-label`s.
+
+Frontend tests 15 → 23.
+
 ## Next session
 
 1. Read `AGENTS.md`, `README.md`, `docs/architecture.md`,

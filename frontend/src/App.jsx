@@ -5,6 +5,8 @@ import ReviewScreen from "./components/ReviewScreen";
 import LivePanel from "./components/LivePanel";
 import MeetingHistory from "./components/MeetingHistory";
 import ReportView from "./components/ReportView";
+import FloatingBar from "./components/FloatingBar";
+import { useLiveSession } from "./live/LiveSessionProvider";
 import CommandPalette, { useShortcuts } from "./ui/CommandPalette";
 import { ThemeSwitch } from "./ui/theme";
 import { useToast } from "./ui/toast";
@@ -25,6 +27,7 @@ export default function App() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [meetings, setMeetings] = useState([]);
   const toast = useToast();
+  const live = useLiveSession();
 
   useEffect(() => {
     getReadiness().then(setReadiness).catch(() => setOffline(true));
@@ -62,6 +65,15 @@ export default function App() {
       { id: "live", label: "Start a live meeting", icon: "●", group: "Go", run: () => go("live") },
       { id: "history", label: "Past meetings", icon: "⧉", group: "Go", run: () => go("history") },
     ];
+    if (live.active) {
+      base.unshift({
+        id: "back-to-meeting",
+        label: live.paused ? "Resume the meeting" : "Back to the live meeting",
+        icon: "●",
+        group: "Live",
+        run: () => go("live"),
+      });
+    }
     const recent = meetings.slice(0, 8).map((m) => ({
       id: `m-${m.meeting_id}`,
       label: m.title || m.meeting_id,
@@ -71,7 +83,7 @@ export default function App() {
       run: () => openReport(m.meeting_id),
     }));
     return [...base, ...recent];
-  }, [meetings, go, openReport]);
+  }, [meetings, go, openReport, live.active, live.paused]);
 
   useShortcuts(
     useMemo(
@@ -101,6 +113,15 @@ export default function App() {
         <h1>Nexvi.Meets</h1>
         <span className="pill accent">commitment integrity, not summarization</span>
         <span className="spacer" />
+        {live.active && view !== "live" && (
+          <button
+            className={live.paused ? "tiny" : "primary tiny"}
+            onClick={() => go("live")}
+            title="A meeting is being recorded"
+          >
+            {live.paused ? "‖ Meeting paused" : "● Recording"}
+          </button>
+        )}
         <button
           className="ghost tiny"
           onClick={() => setPaletteOpen(true)}
@@ -189,6 +210,27 @@ export default function App() {
           />
         )}
       </div>
+
+      {/* Rendered by the app, not by the live view, so it follows you
+          onto every screen while a meeting is running. Its controls act
+          on the session itself, which is why they still work here. */}
+      {live.active && !live.barHidden && (
+        <FloatingBar
+          segments={live.segments}
+          candidates={live.candidates}
+          tracks={live.tracks}
+          meetingId={live.meetingId}
+          paused={live.paused}
+          onPause={live.pause}
+          onResume={live.resume}
+          onEnd={() => {
+            live.end();
+            go("live");
+          }}
+          onClose={() => live.setBarHidden(true)}
+          onOpenMeeting={view === "live" ? null : () => go("live")}
+        />
+      )}
 
       <CommandPalette
         open={paletteOpen}

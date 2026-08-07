@@ -1,83 +1,44 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { openLiveSocket } from "../api/client";
-import {
-  TrackRecorder,
-  captureMicrophone,
-  captureTabAudio,
-  isCaptureSupported,
-  tabAudioSupport,
-} from "../lib/audioCapture";
-import FloatingBar from "./FloatingBar";
+import { useEffect, useRef, useState } from "react";
+import { tabAudioSupport } from "../lib/audioCapture";
+import { useLiveSession } from "../live/LiveSessionProvider";
 
 /**
- * Live meeting mode.
+ * Live meeting mode — the full-screen view.
  *
- * Captures your microphone and the shared meeting tab, transcribes both
- * in near-realtime, and surfaces commitments while people are still
- * talking. Remote speech starts unattributed — you tag who said it, and
- * tagging one segment tags the whole cluster.
+ * This is now only a *view*. The websocket, the recorders and all session
+ * state live in `LiveSessionProvider`, above the view switch, because a
+ * meeting must survive you navigating to another tab. When this component
+ * owned them, opening "Past meetings" mid-meeting unmounted it and
+ * silently ended the recording.
+ *
+ * The floating bar is likewise rendered by the app, not here, so it can
+ * follow you onto any screen with working pause and end controls.
  *
  * Nothing is created here. The session produces candidates and gate
  * verdicts; approval stays a separate, human, post-meeting step.
  */
 export default function LivePanel({ onFinished }) {
-  const [phase, setPhase] = useState("setup"); // setup | live | finalizing | ended
+  // Setup-form state is genuinely local: it only matters until the
+  // session starts, and is meaningless afterwards.
   const [consent, setConsent] = useState(false);
   const [participants, setParticipants] = useState("Arjun\nRohit\nPriya");
   const [selfName, setSelfName] = useState("Arjun");
   const [captureTab, setCaptureTab] = useState(true);
   const [title, setTitle] = useState("Live standup");
 
-  const [meetingId, setMeetingId] = useState(null);
-  const [roster, setRoster] = useState([]);
-  const [segments, setSegments] = useState([]);
-  const [candidates, setCandidates] = useState([]);
-  const [warnings, setWarnings] = useState([]);
-  const [status, setStatus] = useState(null);
-  const [error, setError] = useState(null);
-  const [engines, setEngines] = useState({});
-  const [tracks, setTracks] = useState({ mic: false, remote: false });
-  const [showBar, setShowBar] = useState(true);
-  const [paused, setPaused] = useState(false);
+  const {
+    phase, meetingId, roster, segments, candidates, warnings, status, error,
+    engines, tracks, paused, barHidden, setBarHidden,
+    start: startSession, pause: pauseRecording, resume: resumeRecording,
+    end: endMeeting, send, setError,
+  } = useLiveSession();
 
   const browser = tabAudioSupport();
-  const socketRef = useRef(null);
-  const recordersRef = useRef([]);
   const feedRef = useRef(null);
-
-  const stopRecorders = useCallback(() => {
-    recordersRef.current.forEach((r) => {
-      try {
-        r.stop();
-      } catch {
-        /* already stopped */
-      }
-    });
-    recordersRef.current = [];
-    setTracks({ mic: false, remote: false });
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      stopRecorders();
-      socketRef.current?.close();
-    };
-  }, [stopRecorders]);
 
   useEffect(() => {
     feedRef.current?.scrollTo({ top: feedRef.current.scrollHeight, behavior: "smooth" });
   }, [segments]);
-
-  function send(payload) {
-    const socket = socketRef.current;
-    if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(payload));
-  }
-
-  function applySnapshot(msg) {
-    if (msg.segments) setSegments(msg.segments);
-    if (msg.candidates) setCandidates(msg.candidates);
-    if (msg.warnings) setWarnings(msg.warnings);
-  }
 
   async function start() {
     setError(null);
@@ -85,143 +46,19 @@ export default function LivePanel({ onFinished }) {
       setError("Confirm that everyone in the meeting knows it is being captured.");
       return;
     }
-    if (!isCaptureSupported()) {
-      setError("This browser cannot capture audio. Use Chrome or Edge.");
-      return;
-    }
-
-    // Ask for devices BEFORE opening the socket: a refused permission
-    // should not leave a half-started session on the server.
-    let micStream = null;
-    let tabStream = null;
-    try {
-      micStream = await captureMicrophone();
-      if (captureTab) tabStream = await captureTabAudio();
-    } catch (err) {
-      micStream?.getTracks().forEach((t) => t.stop());
-      setError(err.message);
-      return;
-    }
-
-    const socket = openLiveSocket();
-    socketRef.current = socket;
-
-    socket.onopen = () => {
-      send({
-        type: "start",
-        title,
-        meeting_date: new Date().toISOString().slice(0, 10),
-        participants: participants.split("\n").map((p) => p.trim()).filter(Boolean),
-        self_participant: selfName.trim(),
-        consent_acknowledged: true,
-        consent_note: "Reviewer confirmed in-app that participants were informed.",
-      });
-    };
-
-    socket.onmessage = (event) => {
-      const msg = JSON.parse(event.data);
-      switch (msg.type) {
-        case "started": {
-          setMeetingId(msg.meeting_id);
-          setRoster(msg.participants || []);
-          setEngines({ transcriber: msg.transcriber, extractor: msg.extractor });
-          setPhase("live");
-          if (!msg.audio_enabled) {
-            setWarnings((w) => [
-              ...w,
-              "No speech-to-text engine is configured — set GROQ_API_KEY or SARVAM_API_KEY. You can still type lines below.",
-            ]);
-          }
-          const chunkSeconds = msg.chunk_seconds || 6;
-          const started = [];
-          if (micStream) {
-            const rec = new TrackRecorder(micStream, "mic", (c) => send({ type: "audio", ...c }), chunkSeconds);
-            rec.start();
-            started.push(rec);
-            setTracks((t) => ({ ...t, mic: true }));
-          }
-          if (tabStream) {
-            const rec = new TrackRecorder(tabStream, "remote", (c) => send({ type: "audio", ...c }), chunkSeconds);
-            rec.start();
-            started.push(rec);
-            setTracks((t) => ({ ...t, remote: true }));
-          }
-          recordersRef.current = started;
-          break;
-        }
-        case "segments":
-          setSegments((prev) => [...prev, ...msg.segments]);
-          break;
-        case "snapshot":
-        case "tagged":
-          applySnapshot(msg);
-          break;
-        case "warnings":
-          setWarnings(msg.warnings || []);
-          break;
-        case "recording":
-          // The server is authoritative: if it says paused, show paused.
-          setPaused(Boolean(msg.paused));
-          if (msg.segments) setSegments((prev) => [...prev, ...msg.segments]);
-          break;
-        case "finalizing":
-          setPhase("finalizing");
-          setStatus(msg.step);
-          break;
-        case "ended":
-          stopRecorders();
-          applySnapshot(msg);
-          setPhase("ended");
-          setStatus(msg.executive_summary || null);
-          break;
-        case "error":
-          setError(msg.error);
-          if (msg.code === "consent_required" || msg.code === "participants_required") {
-            stopRecorders();
-            setPhase("setup");
-          }
-          break;
-        default:
-          break;
-      }
-    };
-
-    socket.onerror = () => setError("Websocket failed. Is the backend running on :8000?");
-    socket.onclose = () => stopRecorders();
-  }
-
-  /**
-   * Pause stops capture on both sides.
-   *
-   * Recorders stop first, then the server is told — that ordering means
-   * any chunk still in flight arrives before the server flips to paused
-   * and gets dropped there. Doing it the other way round would leave a
-   * window where audio recorded after the click still got transcribed.
-   */
-  function pauseRecording() {
-    recordersRef.current.forEach((r) => r.pause());
-    setPaused(true);
-    send({ type: "pause" });
-  }
-
-  function resumeRecording() {
-    recordersRef.current.forEach((r) => r.resume());
-    setPaused(false);
-    send({ type: "resume" });
-  }
-
-  function endMeeting() {
-    stopRecorders();
-    setPaused(false);
-    setPhase("finalizing");
-    setStatus("wrapping up");
-    send({ type: "end" });
+    await startSession({
+      title,
+      participants: participants.split("\n").map((p) => p.trim()).filter(Boolean),
+      selfName: selfName.trim(),
+      captureTab,
+      onEnded: null,
+    });
   }
 
   const unattributed = segments.filter((s) => !s.attributable && !s.speaker_confirmed).length;
 
   // ---------------- setup ----------------
-  if (phase === "setup") {
+  if (phase === "idle") {
     return (
       <section className="panel">
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 4 }}>
@@ -325,20 +162,6 @@ export default function LivePanel({ onFinished }) {
   // ---------------- live / finalizing / ended ----------------
   return (
     <>
-      {phase === "live" && showBar && (
-        <FloatingBar
-          segments={segments}
-          candidates={candidates}
-          tracks={tracks}
-          meetingId={meetingId}
-          paused={paused}
-          onPause={pauseRecording}
-          onResume={resumeRecording}
-          onEnd={endMeeting}
-          onClose={() => setShowBar(false)}
-        />
-      )}
-
       <section className="panel">
       <h2>{phase === "ended" ? "Meeting ended" : "Live meeting"}</h2>
 
@@ -391,8 +214,8 @@ export default function LivePanel({ onFinished }) {
             <button onClick={() => send({ type: "flush" })} disabled={paused}>
               Extract now
             </button>
-            {!showBar && (
-              <button className="ghost" onClick={() => setShowBar(true)}>
+            {barHidden && (
+              <button className="ghost" onClick={() => setBarHidden(false)}>
                 Show Naina
               </button>
             )}

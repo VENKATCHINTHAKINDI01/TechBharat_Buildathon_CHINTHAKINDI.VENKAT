@@ -19,6 +19,7 @@ import App from "../App";
 import { ThemeProvider, ThemeSwitch } from "../ui/theme";
 import { ToastProvider, useToast } from "../ui/toast";
 import CommandPalette from "../ui/CommandPalette";
+import { LiveSessionProvider } from "../live/LiveSessionProvider";
 
 vi.mock("../api/client", () => ({
   getReadiness: vi.fn(async () => ({
@@ -45,11 +46,15 @@ vi.mock("../api/client", () => ({
   openLiveSocket: vi.fn(() => ({ close: vi.fn(), readyState: 0 })),
 }));
 
+// Mirrors main.jsx exactly. If these drift, the tests stop testing the
+// app that actually ships.
 function renderApp() {
   return render(
     <ThemeProvider>
       <ToastProvider>
-        <App />
+        <LiveSessionProvider>
+          <App />
+        </LiveSessionProvider>
       </ToastProvider>
     </ThemeProvider>
   );
