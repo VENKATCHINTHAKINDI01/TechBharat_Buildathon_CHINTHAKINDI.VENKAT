@@ -213,6 +213,39 @@ class LiveSession:
                 "Confirm that everyone in the meeting knows it is being recorded."
             )
 
+    def add_participants(self, names: list[str]) -> list[Participant]:
+        """Add people to a running meeting.
+
+        Used when a name is read off the shared screen and confirmed by a
+        human, and equally when someone simply joins late. Returns only
+        the participants actually added, so the caller can report
+        honestly rather than claiming to have added duplicates.
+
+        Matching is case-insensitive against both names and aliases: a
+        meeting that already has "Rohit" must not gain a second "rohit"
+        who then competes with the first and makes owner resolution
+        ambiguous -- which would *block* items rather than help them.
+        """
+        existing = set()
+        for participant in self.participants:
+            existing.add(participant.name.casefold())
+            existing.update(alias.casefold() for alias in participant.aliases)
+
+        added: list[Participant] = []
+        for raw in names:
+            name = (raw or "").strip()
+            if not name or name.casefold() in existing:
+                continue
+            participant = Participant(
+                participant_id=f"p-{name.casefold().replace(' ', '-')}-{len(self.participants)}",
+                name=name,
+            )
+            self.participants.append(participant)
+            added.append(participant)
+            existing.add(name.casefold())
+
+        return added
+
     # --- speaker naming --------------------------------------------------
 
     def _participant(self, participant_id: Optional[str]) -> Optional[Participant]:

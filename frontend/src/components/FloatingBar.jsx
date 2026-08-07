@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import DetectedNames from "./DetectedNames";
 
 /**
  * Naina's floating panel — the app's presence during a meeting.
@@ -195,6 +196,11 @@ export default function FloatingBar({
           )
         )}
       </div>
+
+      {/* Names read off the screen, offered wherever you happen to be.
+          Rendered inside the bar so the confirm step is reachable from
+          any tab, not only from the live view. */}
+      <DetectedNames compact />
 
       {candidates.length > 0 && (
         <div className="floating-items">

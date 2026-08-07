@@ -57,7 +57,11 @@ vi.mock("../lib/audioCapture", () => ({
   isCaptureSupported: () => true,
   tabAudioSupport: () => ({ supported: true, browser: "Chrome" }),
   captureMicrophone: vi.fn(async () => ({ getTracks: () => [], getAudioTracks: () => [] })),
-  captureTabAudio: vi.fn(async () => ({ getTracks: () => [], getAudioTracks: () => [] })),
+  captureTabAudio: vi.fn(async ({ keepVideo } = {}) => ({
+    audio: { getTracks: () => [], getAudioTracks: () => [] },
+    video: keepVideo ? { getTracks: () => [], getVideoTracks: () => [{ stop() {} }] } : null,
+  })),
+  grabFrame: vi.fn(async () => ({ width: 1280, height: 720 })),
   TrackRecorder: class {
     start() {}
     pause() {}
@@ -238,5 +242,95 @@ describe("a live meeting survives navigation", () => {
     await waitFor(() =>
       expect(screen.queryByRole("complementary", { name: /Naina/i })).not.toBeInTheDocument()
     );
+  });
+});
+
+// --- names read off the shared screen -------------------------------------
+//
+// A name on a video tile is a guess in a confident font. These tests hold
+// the line that it stays a *proposal* until a human says yes, because a
+// wrong one would become an owner the safety gate happily approves.
+
+describe("detected participant names", () => {
+  async function startWithScreen(user) {
+    await user.click(await screen.findByRole("tab", { name: "Live meeting" }));
+    await screen.findByText(/Start a meeting with Naina/);
+
+    await user.click(screen.getByRole("checkbox", { name: /Let Naina read participant names/ }));
+    await user.click(screen.getByRole("checkbox", { name: /Everyone in this meeting knows/ }));
+    await user.click(screen.getByRole("button", { name: /Start capturing/ }));
+
+    await waitFor(() => expect(FakeSocket.last).toBeTruthy());
+    FakeSocket.last.open();
+    FakeSocket.last.emit({
+      type: "started",
+      meeting_id: "nm-live-2",
+      participants: [{ participant_id: "p-arjun", name: "Arjun" }],
+      audio_enabled: true,
+      chunk_seconds: 6,
+    });
+    return FakeSocket.last;
+  }
+
+  it("offers the scan control only after you opt in", async () => {
+    const user = userEvent.setup();
+    renderApp();
+    await startWithScreen(user);
+
+    // Offered in both the live panel and the floating bar, exactly as
+    // the transcript and the commitments already are.
+    expect(
+      await screen.findAllByRole("button", { name: /Find names on screen/ })
+    ).not.toHaveLength(0);
+  });
+
+  it("keeps screen reading off unless explicitly enabled", async () => {
+    const user = userEvent.setup();
+    renderApp();
+
+    // Same flow, but without ticking the screen-reading box.
+    await user.click(await screen.findByRole("tab", { name: "Live meeting" }));
+    await screen.findByText(/Start a meeting with Naina/);
+    await user.click(screen.getByRole("checkbox", { name: /Everyone in this meeting knows/ }));
+    await user.click(screen.getByRole("button", { name: /Start capturing/ }));
+    await waitFor(() => expect(FakeSocket.last).toBeTruthy());
+    FakeSocket.last.open();
+    FakeSocket.last.emit({
+      type: "started", meeting_id: "nm-live-3", participants: [], audio_enabled: true,
+    });
+
+    expect(screen.queryByRole("button", { name: /Find names on screen/ })).not.toBeInTheDocument();
+  });
+
+  it("sends nothing to the server until a name is accepted", async () => {
+    const user = userEvent.setup();
+    renderApp();
+    const socket = await startWithScreen(user);
+
+    // A proposal exists in the UI but has not been confirmed.
+    act(() => {
+      socket.emit({ type: "warnings", warnings: [] });
+    });
+
+    expect(socket.sent.some((m) => m.type === "add_participants")).toBe(false);
+  });
+
+  it("adds a confirmed name to the roster and marks its source", async () => {
+    const user = userEvent.setup();
+    renderApp();
+    const socket = await startWithScreen(user);
+
+    // The server confirms; the roster grows.
+    socket.emit({
+      type: "participants",
+      added: [{ participant_id: "p-mahesh", name: "Mahesh" }],
+      participants: [
+        { participant_id: "p-arjun", name: "Arjun" },
+        { participant_id: "p-mahesh", name: "Mahesh" },
+      ],
+    });
+
+    // The roster count is what the user actually sees change.
+    await waitFor(() => expect(screen.getAllByText(/2 in the room/).length).toBeGreaterThan(0));
   });
 });

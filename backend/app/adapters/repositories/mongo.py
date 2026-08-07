@@ -100,6 +100,15 @@ class MongoRepository:
             upsert=True,
         )
 
+    async def update_participants(
+        self, meeting_id: str, participants: list[Participant]
+    ) -> None:
+        """Replace the roster of a meeting already in progress."""
+        await self._db.nm_meetings.update_one(
+            {"meeting_id": meeting_id},
+            {"$set": {"participants": [p.model_dump() for p in participants]}},
+        )
+
     async def get_meeting(self, meeting_id: str) -> Optional[dict]:
         return _strip_id(await self._db.nm_meetings.find_one({"meeting_id": meeting_id}))
 

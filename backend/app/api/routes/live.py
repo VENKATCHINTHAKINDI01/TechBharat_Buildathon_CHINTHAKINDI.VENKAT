@@ -302,6 +302,49 @@ async def live_session(
                 )
                 continue
 
+            if kind == "add_participants":
+                names = [n for n in (message.get("names") or []) if isinstance(n, str)]
+                added = session.add_participants(names)
+
+                if added:
+                    # The roster is what owner resolution reads, so it has
+                    # to reach storage too -- not just this session object.
+                    try:
+                        await repository.update_participants(
+                            session.meeting_id, session.participants
+                        )
+                    except Exception as exc:  # noqa: BLE001
+                        logger.warning("could not persist new participants: %s", exc)
+
+                    if audit:
+                        await audit.record(
+                            AuditStage.live,
+                            {
+                                "event": "participants_added",
+                                # Where a name came from matters: one read
+                                # off a screen by OCR is a weaker claim
+                                # than one a human typed, and the audit
+                                # trail should not flatten that.
+                                "source": message.get("source") or "manual",
+                                "names": [p.name for p in added],
+                                "confirmed_by": message.get("reviewer") or "reviewer",
+                            },
+                        )
+
+                await websocket.send_json(
+                    {
+                        "type": "participants",
+                        "added": [
+                            {"participant_id": p.participant_id, "name": p.name} for p in added
+                        ],
+                        "participants": [
+                            {"participant_id": p.participant_id, "name": p.name}
+                            for p in session.participants
+                        ],
+                    }
+                )
+                continue
+
             if kind in ("pause", "resume"):
                 if kind == "pause":
                     session.pause()

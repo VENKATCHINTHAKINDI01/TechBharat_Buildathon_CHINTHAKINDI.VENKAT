@@ -606,6 +606,26 @@ kbd {
 }
 
 /* ==========================================================================
+   detected-name proposals
+   ========================================================================== */
+
+.proposal {
+  display: flex; align-items: center; gap: var(--space-2);
+  padding: var(--space-2) var(--space-3); margin-bottom: var(--space-2);
+  background: var(--surface-2); border: 1px solid var(--border);
+  /* Amber, not green: this is a claim awaiting a decision, and it should
+     not read as something already settled. */
+  border-left: 3px solid var(--warn);
+  border-radius: var(--radius-sm);
+}
+.proposal-name { font-weight: 600; font-size: var(--text-base); }
+.floating-names {
+  padding: var(--space-2); background: var(--bg-subtle);
+  border-radius: var(--radius-sm);
+}
+.floating-names .proposal { padding: var(--space-1) var(--space-2); font-size: var(--text-xs); }
+
+/* ==========================================================================
    dropzone
    ========================================================================== */
 

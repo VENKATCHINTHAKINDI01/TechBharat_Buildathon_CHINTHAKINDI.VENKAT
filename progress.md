@@ -547,6 +547,52 @@ proper `aria-label`s.
 
 Frontend tests 15 → 23.
 
+### 2026-08-06 — Session 13 (reading names off the shared screen)
+
+**F049.** Naina can now read participant names from the meeting tiles.
+Three decisions shaped it, and each was the user's call:
+
+**OCR runs in the browser, not on a server.** Tesseract via WebAssembly;
+no frame is uploaded anywhere. This was chosen over Groq's vision model
+deliberately: OCR'ing a shared tab means processing whatever is on that
+screen — a private chat, an email notification, someone else's document.
+Sending those pixels to a third party to learn four names is a wildly
+disproportionate trade. It also sidesteps two live risks: Groq's only
+vision model (`qwen/qwen3.6-27b`) is **Preview tier** and can be retired
+at short notice, and it would spend from the same token budget that was
+exhausted two sessions ago. Tesseract is lazy-loaded, so the ~2MB of wasm
+only downloads if the feature is used.
+
+**On demand, not on a timer.** A still frame when asked. The point is to
+learn who is in the room, not to watch the screen.
+
+**Everything found is a proposal.** A name on a video tile is a guess in
+a confident font — OCR mangles characters, and video-call display names
+are frequently not people ("iPhone", "Conference Room 2", "Ravi's
+MacBook"). A misread name that silently became a participant would be an
+owner the safety gate happily approves, which is the precise failure this
+whole project exists to prevent. So detection returns candidates; a human
+accepts them; only then do they enter the roster.
+
+The filtering carries the feature and is tested hardest: interface
+furniture, device names, digits, all-caps labels and prose are all
+rejected; `(Host)` decoration is stripped; already-present names are not
+re-proposed, so re-scanning is idempotent. That last one matters more
+than it looks — a duplicate "Rohit" would make owner resolution
+*ambiguous* and start blocking items rather than helping them.
+
+Screen reading has its **own consent checkbox**, separate from the audio
+one, because it is a categorically more invasive permission and bundling
+them would have been quietly dishonest. The audit log records `source:
+screen_ocr` alongside who confirmed, so a name read by a machine is never
+indistinguishable from one a human typed.
+
+Also fixed on the way through: `captureTabAudio` used to return a bare
+`MediaStream` and now returns `{audio, video}`; a stale test mock caught
+the mismatch immediately.
+
+Backend 532 tests, frontend 42.
+
 ## Next session
 
 1. Read `AGENTS.md`, `README.md`, `docs/architecture.md`,

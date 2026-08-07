@@ -571,3 +571,95 @@ def test_diagnostics_survive_for_a_meeting_that_did_find_things(client):
     assert detail["candidates"]
     assert detail["extraction"]["candidates_found"] == len(detail["candidates"])
     assert detail["extraction"]["fallback_reason"] is None
+
+
+# --- adding people mid-meeting ---------------------------------------------
+#
+# Names read off the shared screen are proposals until a human confirms
+# them. Confirmation lands here. The rule that matters: a confirmed name
+# becomes a real participant who CAN own work, so the path has to be
+# exact about duplicates and honest in the audit log about where the
+# name came from.
+
+
+def test_a_confirmed_name_joins_the_meeting(client):
+    with client.websocket_connect("/live") as ws:
+        _start(ws)
+        ws.send_json({"type": "add_participants", "names": ["Mahesh"], "source": "screen_ocr"})
+        reply = ws.receive_json()
+
+    assert reply["type"] == "participants"
+    assert [p["name"] for p in reply["added"]] == ["Mahesh"]
+    assert "Mahesh" in [p["name"] for p in reply["participants"]]
+
+
+def test_a_new_participant_can_then_own_an_action_item(client):
+    """The whole point of adding them. Until Mahesh is a participant,
+    'Mahesh will...' resolves to nobody and the gate blocks it."""
+    with client.websocket_connect("/live") as ws:
+        _start(ws)
+        ws.send_json({"type": "add_participants", "names": ["Mahesh"]})
+        ws.receive_json()
+
+        ws.send_json({"type": "text", "speaker": "Arjun",
+                      "text": "Mahesh, can you finish the API migration by Friday?"})
+        _drain(ws, "segments")
+        ws.send_json({"type": "text", "speaker": "Mahesh",
+                      "text": "Yes, I will finish the API migration by Friday."})
+        snapshot = _drain(ws, "snapshot")
+
+    assert snapshot["candidates"], "the commitment should have been found"
+    assert snapshot["candidates"][0]["owner_name"] == "Mahesh"
+
+
+def test_adding_someone_already_present_changes_nothing(client):
+    """Re-scanning the screen must be idempotent. A second 'Rohit' would
+    make owner resolution ambiguous and BLOCK items rather than help."""
+    with client.websocket_connect("/live") as ws:
+        _start(ws)
+        ws.send_json({"type": "add_participants", "names": ["Rohit", "rohit", "ROHIT"]})
+        reply = ws.receive_json()
+
+    assert reply["added"] == []
+    assert sum(1 for p in reply["participants"] if p["name"].casefold() == "rohit") == 1
+
+
+def test_blank_and_empty_names_are_ignored(client):
+    with client.websocket_connect("/live") as ws:
+        _start(ws)
+        ws.send_json({"type": "add_participants", "names": ["", "   ", None, "Mahesh"]})
+        reply = ws.receive_json()
+
+    assert [p["name"] for p in reply["added"]] == ["Mahesh"]
+
+
+def test_the_audit_log_records_that_a_name_came_from_the_screen(client):
+    """A name OCR'd off a video tile is a weaker claim than one a human
+    typed. The trail must not flatten the difference."""
+    with client.websocket_connect("/live") as ws:
+        _start(ws)
+        ws.send_json({
+            "type": "add_participants",
+            "names": ["Mahesh"],
+            "source": "screen_ocr",
+            "reviewer": "vyas",
+        })
+        ws.receive_json()
+
+    events = client.get("/review/meetings/live-demo/audit").json()
+    entry = next(e for e in events if e["payload"].get("event") == "participants_added")
+    assert entry["payload"]["source"] == "screen_ocr"
+    assert entry["payload"]["names"] == ["Mahesh"]
+    assert entry["payload"]["confirmed_by"] == "vyas"
+
+
+def test_the_new_roster_is_persisted_for_review(client):
+    with client.websocket_connect("/live") as ws:
+        _start(ws)
+        ws.send_json({"type": "add_participants", "names": ["Mahesh"]})
+        ws.receive_json()
+        ws.send_json({"type": "end"})
+        _drain(ws, "ended", limit=14)
+
+    detail = client.get("/meetings/live-demo").json()
+    assert "Mahesh" in [p["name"] for p in detail["participants"]]

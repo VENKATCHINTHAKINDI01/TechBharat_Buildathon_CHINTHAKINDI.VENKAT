@@ -12,6 +12,7 @@ import {
   TrackRecorder,
   captureMicrophone,
   captureTabAudio,
+  grabFrame,
   isCaptureSupported,
 } from "../lib/audioCapture";
 
@@ -65,9 +66,16 @@ export function LiveSessionProvider({ children }) {
   // Hiding Naina is a user preference about the session, not about
   // whichever screen happens to be open.
   const [barHidden, setBarHidden] = useState(false);
+  // Names read off the shared screen, awaiting a human's yes or no.
+  // They are NOT participants and cannot own anything until confirmed.
+  const [proposedNames, setProposedNames] = useState([]);
+  const [scanning, setScanning] = useState(false);
+  const [canReadScreen, setCanReadScreen] = useState(false);
 
   const socketRef = useRef(null);
   const recordersRef = useRef([]);
+  // Held only when the user opted into reading names off the screen.
+  const screenRef = useRef(null);
   const onEndedRef = useRef(null);
 
   const active = phase === "live" || phase === "finalizing";
@@ -81,6 +89,8 @@ export function LiveSessionProvider({ children }) {
       }
     });
     recordersRef.current = [];
+    screenRef.current?.getTracks().forEach((track) => track.stop());
+    screenRef.current = null;
     setTracks(IDLE.tracks);
   }, []);
 
@@ -132,7 +142,7 @@ export function LiveSessionProvider({ children }) {
   }, []);
 
   const start = useCallback(
-    async ({ title, participants, selfName, captureTab, onEnded }) => {
+    async ({ title, participants, selfName, captureTab, readScreen = false, onEnded }) => {
       setError(null);
       onEndedRef.current = onEnded || null;
 
@@ -143,14 +153,22 @@ export function LiveSessionProvider({ children }) {
 
       let micStream = null;
       let tabStream = null;
+      let screenStream = null;
       try {
         micStream = await captureMicrophone();
-        if (captureTab) tabStream = await captureTabAudio();
+        if (captureTab) {
+          const captured = await captureTabAudio({ keepVideo: readScreen });
+          tabStream = captured.audio;
+          screenStream = captured.video;
+        }
       } catch (err) {
         micStream?.getTracks().forEach((track) => track.stop());
         setError(err.message);
         return false;
       }
+      screenRef.current = screenStream;
+      setCanReadScreen(Boolean(screenStream));
+      setProposedNames([]);
 
       setSegments([]);
       setCandidates([]);
@@ -219,6 +237,18 @@ export function LiveSessionProvider({ children }) {
           case "warnings":
             setWarnings(message.warnings || []);
             break;
+          case "participants":
+            setRoster(message.participants || []);
+            // Anything just accepted is no longer a proposal.
+            setProposedNames((current) =>
+              current.filter(
+                (proposal) =>
+                  !(message.added || []).some(
+                    (added) => added.name.toLowerCase() === proposal.name.toLowerCase()
+                  )
+              )
+            );
+            break;
           case "recording":
             setPaused(Boolean(message.paused));
             if (message.segments) setSegments((current) => [...current, ...message.segments]);
@@ -253,6 +283,58 @@ export function LiveSessionProvider({ children }) {
     [applySnapshot, stopRecorders, meetingId]
   );
 
+  /**
+   * Read participant names off the shared screen.
+   *
+   * On demand rather than on a timer: the point is to learn who is in
+   * the room, not to watch the screen. OCR runs entirely in this
+   * browser -- no frame is uploaded anywhere -- and everything it finds
+   * is a *proposal*. A name on a video tile is a guess in a confident
+   * font, and a wrong one would become an owner the gate approves.
+   */
+  const scanScreenForNames = useCallback(async () => {
+    if (!screenRef.current) {
+      setError(
+        "Naina cannot see the meeting. Start the meeting with " +
+          "\"Let Naina read participant names\" ticked to enable this."
+      );
+      return [];
+    }
+
+    setScanning(true);
+    try {
+      const { detectNames } = await import("../lib/nameDetection");
+      const canvas = await grabFrame(screenRef.current);
+      const known = roster.map((p) => p.name);
+      const found = await detectNames(canvas, { known });
+
+      setProposedNames((current) => {
+        const seen = new Set(current.map((c) => c.name.toLowerCase()));
+        return [...current, ...found.filter((f) => !seen.has(f.name.toLowerCase()))];
+      });
+      return found;
+    } catch (err) {
+      setError(`Could not read the screen: ${err.message}`);
+      return [];
+    } finally {
+      setScanning(false);
+    }
+  }, [roster]);
+
+  const confirmNames = useCallback(
+    (names, reviewer = "reviewer") => {
+      if (!names.length) return;
+      send({ type: "add_participants", names, source: "screen_ocr", reviewer });
+    },
+    [send]
+  );
+
+  const dismissName = useCallback((name) => {
+    setProposedNames((current) =>
+      current.filter((c) => c.name.toLowerCase() !== name.toLowerCase())
+    );
+  }, []);
+
   const pause = useCallback(() => {
     recordersRef.current.forEach((recorder) => recorder.pause());
     setPaused(true);
@@ -275,6 +357,9 @@ export function LiveSessionProvider({ children }) {
 
   const reset = useCallback(() => {
     stopRecorders();
+    setProposedNames([]);
+    setCanReadScreen(false);
+    import("../lib/nameDetection").then((m) => m.terminateWorker()).catch(() => {});
     socketRef.current?.close();
     socketRef.current = null;
     setPhase("idle");
@@ -304,6 +389,12 @@ export function LiveSessionProvider({ children }) {
       paused,
       barHidden,
       setBarHidden,
+      proposedNames,
+      scanning,
+      canReadScreen,
+      scanScreenForNames,
+      confirmNames,
+      dismissName,
       start,
       pause,
       resume,
@@ -315,7 +406,8 @@ export function LiveSessionProvider({ children }) {
     }),
     [
       phase, active, meetingId, roster, segments, candidates, warnings, status,
-      error, engines, tracks, paused, barHidden, start, pause, resume, end, reset, send,
+      error, engines, tracks, paused, barHidden, proposedNames, scanning, canReadScreen,
+      scanScreenForNames, confirmNames, dismissName, start, pause, resume, end, reset, send,
     ]
   );
 

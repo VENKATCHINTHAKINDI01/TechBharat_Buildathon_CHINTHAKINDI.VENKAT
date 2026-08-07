@@ -473,6 +473,16 @@
       ]
     },
     {
+      "id": "F049",
+      "priority": "P1",
+      "name": "Read participant names off the shared screen (local OCR, human-confirmed)",
+      "status": "done",
+      "depends_on": [
+        "F032",
+        "F007"
+      ]
+    },
+    {
       "id": "F019",
       "priority": "P0",
       "name": "Evaluation report and demo freeze",

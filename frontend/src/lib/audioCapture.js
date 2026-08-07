@@ -219,14 +219,20 @@ export async function captureMicrophone() {
 }
 
 /**
- * The meeting tab's audio.
+ * The meeting tab's audio, and optionally its picture.
  *
  * Browsers only expose tab audio through the screen-share picker, and
  * only if the user ticks "Also share tab audio" — there is no way to
- * grab it silently, by design. The video track is stopped immediately;
- * we only ever wanted the sound.
+ * grab it silently, by design.
+ *
+ * ``keepVideo`` is opt-in and defaults to **off**. The video track is
+ * only wanted for reading participant name labels off the meeting tiles,
+ * which is a separate capability the user consents to separately. When
+ * it is not wanted the track is stopped immediately, which also makes
+ * the browser's "sharing your screen" indicator honest about what is
+ * actually being read.
  */
-export async function captureTabAudio() {
+export async function captureTabAudio({ keepVideo = false } = {}) {
   const support = tabAudioSupport();
   if (!support.supported) {
     throw new Error(support.reason || "This browser cannot capture tab audio. Use Chrome or Edge.");
@@ -260,11 +266,49 @@ export async function captureTabAudio() {
     );
   }
 
+  if (keepVideo) {
+    // Caller wants to read names off the tiles. Hand back the whole
+    // stream, and let them stop the video track when they are done.
+    return { audio: new MediaStream(audioTracks), video: display };
+  }
+
   // Drop the video; we never wanted the pixels.
   display.getVideoTracks().forEach((t) => {
     t.stop();
     display.removeTrack(t);
   });
 
-  return new MediaStream(audioTracks);
+  return { audio: new MediaStream(audioTracks), video: null };
+}
+
+/**
+ * Grab one still frame from a video stream as a canvas.
+ *
+ * Deliberately a single frame on request rather than a running capture:
+ * the point is to read the participant tiles once, not to watch the
+ * screen. The <video> element is detached and muted, so nothing is
+ * displayed or played to anyone.
+ */
+export async function grabFrame(stream) {
+  const track = stream?.getVideoTracks?.()[0];
+  if (!track) throw new Error("The screen share has no video track to read.");
+
+  const video = document.createElement("video");
+  video.srcObject = new MediaStream([track]);
+  video.muted = true;
+  video.playsInline = true;
+
+  await video.play();
+  // One rAF after play() so the first frame has actually been decoded;
+  // without it the canvas is reliably blank.
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+
+  const canvas = document.createElement("canvas");
+  canvas.width = video.videoWidth || 1280;
+  canvas.height = video.videoHeight || 720;
+  canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
+
+  video.pause();
+  video.srcObject = null;
+  return canvas;
 }

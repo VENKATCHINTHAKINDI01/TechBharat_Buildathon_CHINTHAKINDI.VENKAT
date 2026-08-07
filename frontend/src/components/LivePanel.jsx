@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { tabAudioSupport } from "../lib/audioCapture";
+import DetectedNames from "./DetectedNames";
 import { useLiveSession } from "../live/LiveSessionProvider";
 
 /**
@@ -24,6 +25,7 @@ export default function LivePanel({ onFinished }) {
   const [participants, setParticipants] = useState("Arjun\nRohit\nPriya");
   const [selfName, setSelfName] = useState("Arjun");
   const [captureTab, setCaptureTab] = useState(true);
+  const [readScreen, setReadScreen] = useState(false);
   const [title, setTitle] = useState("Live standup");
 
   const {
@@ -51,6 +53,7 @@ export default function LivePanel({ onFinished }) {
       participants: participants.split("\n").map((p) => p.trim()).filter(Boolean),
       selfName: selfName.trim(),
       captureTab,
+      readScreen: captureTab && readScreen,
       onEnded: null,
     });
   }
@@ -108,6 +111,29 @@ export default function LivePanel({ onFinished }) {
             Also capture the meeting tab (needed to hear anyone but you)
           </label>
         </div>
+
+        {captureTab && (
+          <div className="field">
+            <label style={{ cursor: "pointer", display: "flex", gap: 10, alignItems: "flex-start" }}>
+              <input
+                type="checkbox"
+                style={{ width: "auto", marginTop: 3 }}
+                checked={readScreen}
+                onChange={(e) => setReadScreen(e.target.checked)}
+              />
+              <span style={{ color: "var(--text)", fontSize: 13 }}>
+                <strong>Let Naina read participant names from the shared screen.</strong>
+                <span className="muted" style={{ display: "block", marginTop: 4 }}>
+                  She takes a still frame when you ask and reads the name labels on the meeting
+                  tiles. This is a <strong>separate</strong> permission from recording voices
+                  because it is more invasive — whatever else is on that screen is in the frame
+                  too. The reading happens entirely on this machine; no picture is uploaded
+                  anywhere. Names she finds are suggestions you accept or reject.
+                </span>
+              </span>
+            </label>
+          </div>
+        )}
 
         <div className="reasons" style={{ background: "transparent", border: "1px solid var(--border)" }}>
           <label style={{ cursor: "pointer", display: "flex", gap: 10, alignItems: "flex-start" }}>
@@ -234,6 +260,11 @@ export default function LivePanel({ onFinished }) {
         </div>
       )}
 
+      </section>
+
+      {phase === "live" && <DetectedNames />}
+
+      <section className="panel">
       {/* transcript */}
       <div className="drawer">
         <strong style={{ fontSize: 13 }}>Transcript</strong>

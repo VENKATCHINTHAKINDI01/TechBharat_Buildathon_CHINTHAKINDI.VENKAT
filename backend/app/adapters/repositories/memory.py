@@ -47,6 +47,20 @@ class InMemoryRepository:
             "participants": [p.model_dump() for p in participants],
         }
 
+    async def update_participants(
+        self, meeting_id: str, participants: list[Participant]
+    ) -> None:
+        """Replace the roster of a meeting already in progress.
+
+        People join late, and names read off the screen only become real
+        once a human confirms them. Either way the stored roster has to
+        catch up, or owner resolution keeps failing for someone who is
+        demonstrably in the room.
+        """
+        meeting = self._meetings.get(meeting_id)
+        if meeting is not None:
+            meeting["participants"] = [p.model_dump() for p in participants]
+
     async def get_meeting(self, meeting_id: str) -> Optional[dict]:
         return self._meetings.get(meeting_id)
 
