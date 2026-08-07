@@ -398,7 +398,15 @@ class LiveSession:
         except Exception as exc:  # noqa: BLE001 - refinement is best-effort
             logger.warning("Diarization failed: %s", exc)
             self.diarization = DiarizationResult(error=str(exc))
-            self.warnings.append(f"Speaker refinement unavailable: {exc}")
+            # Diarization is an optimisation, not a requirement: without
+            # it the reviewer tags remote speakers by hand, which is the
+            # path that already existed. Say so, or the warning reads
+            # like the meeting was lost.
+            self._warn(
+                f"Naina could not group the remote voices automatically, so tag them "
+                f"yourself in the transcript — one click tags the whole cluster. "
+                f"Reason: {exc}"
+            )
             return self.diarization
 
         assignments = assign_speakers(self.segments, result.turns, only_track="remote")

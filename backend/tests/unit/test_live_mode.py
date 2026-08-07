@@ -184,7 +184,13 @@ async def test_diarization_failure_is_reported_not_fatal():
 
     result = await session.refine_speakers()
     assert result.error is not None
-    assert any("Speaker refinement unavailable" in w for w in session.warnings)
+
+    # Diarization is an optimisation, not a requirement. The warning has
+    # to carry the reason AND the way forward, or it reads like the
+    # meeting was lost when in fact manual tagging still works.
+    warning = next(w for w in session.warnings if "could not group the remote voices" in w)
+    assert "tag them yourself" in warning
+    assert "Reason:" in warning
 
 
 async def test_mic_track_is_never_touched_by_diarization():

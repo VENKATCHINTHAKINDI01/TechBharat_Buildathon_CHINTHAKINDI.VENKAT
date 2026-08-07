@@ -493,6 +493,21 @@ async def check_github(settings, keep_issue: bool) -> bool:
 def check_optional(settings) -> None:
     section("6. Optional integrations")
 
+    if settings.sarvam_api_key and settings.live_diarization_enabled:
+        # Diarization is a different service from translation, with a
+        # different model list. Checking the model here is cheap and
+        # catches the misconfiguration that made every meeting end with
+        # a red warning.
+        if "saarika" in settings.sarvam_batch_model:
+            _record(
+                "FAIL",
+                f"SARVAM_BATCH_MODEL={settings.sarvam_batch_model}",
+                "The batch (diarization) API rejects the legacy saarika models.\n"
+                "Set SARVAM_BATCH_MODEL=saaras:v3 in backend/.env",
+            )
+        else:
+            _record("PASS", f"SARVAM_BATCH_MODEL={settings.sarvam_batch_model}")
+
     if settings.sarvam_api_key:
         import httpx
 

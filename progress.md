@@ -593,6 +593,44 @@ the mismatch immediately.
 
 Backend 532 tests, frontend 42.
 
+### 2026-08-07 — Session 14 (Sarvam diarization, actually implemented)
+
+Every live meeting ended with a red warning: *"Diarization is not
+supported in the real-time API. Please use the batch API."* The adapter
+was calling `POST /speech-to-text` with `with_diarization=true`, which is
+the realtime endpoint.
+
+**Two things were wrong, not one.** The endpoint, and the model: the
+config used `saarika`, which Sarvam now lists as *Legacy*, and the batch
+API accepts only `saaras:v3` / `saaras:v4`. Even pointed at the right
+URL, the old call would have been rejected.
+
+**F050.** Diarization now runs the real five-step job workflow —
+initiate, presigned upload URL, PUT the audio, start, poll status,
+download the result JSON. Written against the OpenAPI specs rather than
+guessed; the Azure `x-ms-blob-type: BlockBlob` header on the upload is
+the kind of detail that would otherwise have failed silently in the wild.
+
+**Polling is time-boxed, and that is the point.** Diarization runs when a
+meeting *ends*, which is exactly when someone is waiting for the report.
+Sarvam's own `wait_until_complete()` defaults to a ten-minute timeout,
+which would be unusable here — the demo would appear to hang. The budget
+defaults to 120s, and overrunning abandons the job rather than the
+meeting. The warning now names the way forward ("tag them yourself, one
+click tags the cluster") instead of reading like the meeting was lost.
+
+Also fixed a mismatch the new tests exposed: Sarvam returns bare speaker
+indices (`"0"`, `"1"`), while this module, the overlap mapping and the UI
+all speak `SPEAKER_00`. A raw `"0"` would have surfaced as a cluster name
+in front of a reviewer being asked "who is this?".
+
+Sixteen tests drive a scripted Sarvam through a `MockTransport`: the full
+happy path, step ordering, the upload actually carrying bytes, waiting
+through `Accepted`/`Running`, the time box, a failed job, and each step
+naming itself when it fails.
+
+Backend 532 → 548.
+
 ## Next session
 
 1. Read `AGENTS.md`, `README.md`, `docs/architecture.md`,

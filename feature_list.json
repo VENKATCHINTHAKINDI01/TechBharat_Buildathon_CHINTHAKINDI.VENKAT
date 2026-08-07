@@ -483,6 +483,15 @@
       ]
     },
     {
+      "id": "F050",
+      "priority": "P1",
+      "name": "Sarvam batch diarization (job API, time-boxed)",
+      "status": "done",
+      "depends_on": [
+        "F030"
+      ]
+    },
+    {
       "id": "F019",
       "priority": "P0",
       "name": "Evaluation report and demo freeze",

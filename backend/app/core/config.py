@@ -83,6 +83,15 @@ class Settings(BaseSettings):
     live_asr_language: str = ""
     sarvam_api_base: str = "https://api.sarvam.ai"
     sarvam_stt_model: str = "saarika:v2.5"
+    # Diarization runs on Sarvam's *batch* API, which is a different
+    # service with a different model list: it accepts only saaras:v3 /
+    # saaras:v4, and rejects the (now legacy) saarika family outright.
+    sarvam_batch_model: str = "saaras:v3"
+    # A demo cannot wait indefinitely for a job to finish, so polling is
+    # time-boxed and the report is generated either way.
+    sarvam_diarization_timeout_seconds: float = 120.0
+    sarvam_diarization_poll_seconds: float = 4.0
+    sarvam_max_speakers: int = 6
 
     @field_validator("sarvam_language_code")
     @classmethod

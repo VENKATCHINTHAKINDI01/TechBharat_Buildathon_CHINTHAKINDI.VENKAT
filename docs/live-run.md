@@ -68,6 +68,7 @@ preflight in step 3 fails loudly on this.
 | Setting | Correct value | Symptom if wrong |
 |---|---|---|
 | `SARVAM_LANGUAGE_CODE` | `unknown` | Sarvam returns HTTP 400. `auto-detect` is not a value it accepts. |
+| `SARVAM_BATCH_MODEL` | `saaras:v3` | Diarization returns HTTP 400. The batch API rejects the legacy `saarika` family. |
 | `MONGO_DB_NAME` | `nexvi_meets` | Hyphens are invalid in Mongo database names. |
 
 ---
@@ -123,6 +124,12 @@ when you change networks — re-run the preflight from the venue wifi.
 **Mongo: nameservers failed to answer SRV.** DNS, not credentials. Some
 corporate networks and VPNs block SRV lookups. Use a phone hotspot, or
 the non-SRV connection string from Atlas → Connect → Drivers.
+
+**Sarvam: "Diarization is not supported in the real-time API."** Fixed —
+diarization now runs on Sarvam's batch job API. If it reappears, check
+`SARVAM_BATCH_MODEL` is a `saaras` model; `saarika` is legacy and the
+batch API refuses it. Diarization is optional either way: without it you
+tag remote speakers by hand, one click per cluster.
 
 **GitHub 403 "Resource not accessible by personal access token".** The
 fine-grained token needs **Issues: Read and write** — repository
