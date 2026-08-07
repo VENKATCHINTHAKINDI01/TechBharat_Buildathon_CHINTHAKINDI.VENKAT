@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Nexvi.Meets - Agentic AI Meeting Assistant</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <!-- Reveal.js core CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.6.1/reset.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.6.1/reveal.css">
+    <!-- Base theme (we'll override heavily) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.6.1/theme/black.css">
+    
+    <!-- Google Fonts to match the app -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@500;700;800&display=swap" rel="stylesheet">
+
+    <!-- Premium Glassmorphism Theme -->
+    <style>
+        :root {
+            --bg: #05060A;
+            --accent: #6366f1;
+            --accent-glow: rgba(99, 102, 241, 0.5);
+            --glass-bg: rgba(18, 22, 33, 0.45);
+            --glass-border: rgba(255, 255, 255, 0.1);
+        }
+        
+        body {
+            background-color: var(--bg);
+            background-image: radial-gradient(circle at 15% 50%, rgba(99, 102, 241, 0.15), transparent 40%),
+                              radial-gradient(circle at 85% 30%, rgba(168, 85, 247, 0.15), transparent 40%);
+        }
+
+        .reveal {
+            font-family: 'Inter', sans-serif;
+            color: #e2e8f0;
+        }
+
+        .reveal h1, .reveal h2, .reveal h3, .reveal h4 {
+            font-family: 'Outfit', sans-serif;
+            text-transform: none;
+            font-weight: 700;
+            background: linear-gradient(135deg, #fff, #94a3b8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 20px;
+        }
+
+        .reveal h1 { font-size: 3.5em; letter-spacing: -0.02em; }
+        .reveal h2 { font-size: 2.5em; letter-spacing: -0.01em; }
+        .reveal p, .reveal li { font-size: 1.2em; line-height: 1.6; }
+
+        .glass-panel {
+            background: var(--glass-bg);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--glass-border);
+            border-radius: 24px;
+            padding: 40px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .highlight {
+            color: #a855f7;
+            -webkit-text-fill-color: #a855f7;
+            font-weight: 600;
+        }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 40px;
+            align-items: center;
+        }
+
+        .feature-box {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 20px;
+            transition: all 0.3s ease;
+        }
+        
+        .feature-box:hover {
+            background: rgba(255, 255, 255, 0.06);
+            transform: translateY(-5px);
+            box-shadow: 0 10px 20px var(--accent-glow);
+        }
+
+        .feature-box h4 {
+            margin-bottom: 10px;
+            font-size: 1.2em;
+        }
+
+        .rule-box {
+            border-left: 4px solid var(--accent);
+            background: linear-gradient(90deg, rgba(99, 102, 241, 0.1) 0%, transparent 100%);
+            padding: 20px 30px;
+            text-align: left;
+            border-radius: 0 16px 16px 0;
+            margin: 40px 0;
+        }
+
+        img.asset {
+            border-radius: 20px;
+            box-shadow: 0 0 40px var(--accent-glow);
+            max-height: 500px;
+            object-fit: cover;
+        }
+        
+        .tech-stack {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            flex-wrap: wrap;
+            margin-top: 40px;
+        }
+        .tech-tag {
+            background: rgba(99, 102, 241, 0.2);
+            color: #c7d2fe;
+            padding: 10px 20px;
+            border-radius: 30px;
+            font-family: 'Outfit', sans-serif;
+            font-weight: 600;
+            border: 1px solid rgba(99, 102, 241, 0.4);
+        }
+    </style>
+</head>
+<body>
+    <div class="reveal">
+        <div class="slides">
+
+            <!-- SLIDE 1: Title & Hero -->
+            <section data-auto-animate>
+                <div class="glass-panel">
+                    <h1>Nexvi.<span class="highlight">Meets</span></h1>
+                    <p style="font-size: 1.5em; color: #94a3b8;">Agentic AI Meeting Assistant</p>
+                    <p style="margin-top: 40px; font-size: 1.1em;">Built for TechBharat Cohort #2 Buildathon</p>
+                </div>
+            </section>
+
+            <!-- SLIDE 2: The Problem -->
+            <section data-auto-animate>
+                <h2>The Problem: Summaries Lie</h2>
+                <div class="glass-panel" style="text-align: left;">
+                    <p>Meeting tools today just summarize context. But in software engineering, summaries are useless.</p>
+                    <p>What we actually need to know is:</p>
+                    <h3 style="text-align: center; margin: 40px 0;">Who owes <span class="highlight">what</span> by <span class="highlight">when</span>?</h3>
+                    <p>A summarizer flattens context. If Rohit passes a task to Meera, a standard AI creates a ticket for Rohit anyway. It creates real work for the wrong person.</p>
+                </div>
+            </section>
+
+            <!-- SLIDE 3: The Solution & Golden Rule -->
+            <section data-auto-animate>
+                <div class="grid-2">
+                    <div style="text-align: left;">
+                        <h2>Evidence-Backed</h2>
+                        <p>Nexvi.Meets treats a commitment as a <strong>thread of events</strong>, not a single extracted fact.</p>
+                        
+                        <div class="rule-box">
+                            <p style="font-family: 'Outfit'; font-size: 1.3em; margin:0;">
+                                The LLM may interpret the meeting.<br>
+                                <span class="highlight">Deterministic code decides</span> whether an external action is allowed.
+                            </p>
+                        </div>
+                        <p>No automated GitHub issues without a safety gate and human approval.</p>
+                    </div>
+                    <div>
+                        <img src="assets/nodes.png" class="asset" alt="Neural Graph">
+                    </div>
+                </div>
+            </section>
+
+            <!-- SLIDE 4: Differentiators (Naina) -->
+            <section data-auto-animate>
+                <div class="grid-2">
+                    <div>
+                        <img src="assets/naina.png" class="asset" alt="Naina AI Assistant">
+                    </div>
+                    <div style="text-align: left;">
+                        <h2>Meet <span class="highlight">Naina</span></h2>
+                        <div class="feature-box">
+                            <h4>Picture-in-Picture Live Mode</h4>
+                            <p style="font-size: 0.9em; margin:0;">Naina floats over your meeting seamlessly. She records, pauses on demand, and respects privacy.</p>
+                        </div>
+                        <div class="feature-box">
+                            <h4>Indic Code-Switching</h4>
+                            <p style="font-size: 0.9em; margin:0;">Native support for English + Telugu/Hindi mixtures via Sarvam AI.</p>
+                        </div>
+                        <div class="feature-box">
+                            <h4>Cross-Meeting Memory</h4>
+                            <p style="font-size: 0.9em; margin:0;">A vector database recalls commitments made last week instantly.</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- SLIDE 5: Architecture & Tech Stack -->
+            <section data-auto-animate>
+                <h2>Built for Production</h2>
+                <div class="glass-panel">
+                    <p>Hexagonal architecture. Zero I/O in the domain core. 548 automated tests.</p>
+                    <div class="tech-stack">
+                        <div class="tech-tag">FastAPI</div>
+                        <div class="tech-tag">React 18</div>
+                        <div class="tech-tag">MongoDB</div>
+                        <div class="tech-tag">Groq (Llama-3-70b)</div>
+                        <div class="tech-tag">Whisper-Turbo</div>
+                        <div class="tech-tag">Sarvam AI</div>
+                        <div class="tech-tag">ChromaDB</div>
+                    </div>
+                    <p style="margin-top: 40px;">7 Agents orchestrated locally or via LangGraph, halting at a deterministic Safety Gate.</p>
+                </div>
+            </section>
+
+            <!-- SLIDE 6: Conclusion -->
+            <section data-auto-animate>
+                <div class="glass-panel">
+                    <h1 style="font-size: 4em;"><span class="highlight">100%</span> Accuracy</h1>
+                    <p style="font-size: 1.5em; margin-bottom: 40px;">on owner and date resolution in our evaluation corpus.</p>
+                    <h3>Thank you!</h3>
+                    <p>TechBharat Cohort #2 Buildathon</p>
+                </div>
+            </section>
+
+        </div>
+    </div>
+
+    <!-- Reveal.js Core JS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.6.1/reveal.js"></script>
+    <script>
+        Reveal.initialize({
+            controls: true,
+            progress: true,
+            center: true,
+            hash: true,
+            transition: 'slide', // none/fade/slide/convex/concave/zoom
+            backgroundTransition: 'fade'
+        });
+    </script>
+</body>
+</html>
