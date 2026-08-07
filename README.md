@@ -1,28 +1,51 @@
 # Nexvi.Meets
 
-**An evidence-backed meeting commitment agent.** Built for the TechBharat
-Cohort #2 Buildathon, Use Case B (*Agentic AI Meeting Assistant*).
+**An evidence-backed meeting commitment agent.** It listens to a meeting,
+works out what people actually committed to, and — only after a human
+approves the exact payload — creates the follow-up work.
+
+Built for the TechBharat Cohort #2 Buildathon, Use Case B (*Agentic AI
+Meeting Assistant*).
 
 > The LLM may interpret the meeting.
 > **Deterministic code decides whether an external action is allowed.**
 
-Meet **Naina**, the assistant who sits in the call. She listens, tracks
-every commitment as it is made, handed over, delayed, disputed or dropped,
-and drafts the follow-ups. She does not create any of them. That last part
-is the product.
-
-Most meeting tools summarize. Nexvi.Meets decides what is actually a
-*commitment* — telling a real one apart from a suggestion, a dispute, a
-rejection, or something that got cancelled twenty minutes later — resolves
-who owns it and by when, and takes real action **only** after a human
-approves the exact payload.
+| | |
+|---|---|
+| **Backend** | Python 3.11 · FastAPI · MongoDB · 548 tests |
+| **Frontend** | React 18 · Vite · 42 tests |
+| **Models** | Groq `gpt-oss-120b` · Whisper Large v3 Turbo · Sarvam Saaras |
+| **Status** | 51 of 52 features complete · `verify.sh` green |
 
 ---
 
-## What a commitment actually looks like
+## Contents
 
-Meeting tools tend to extract a task once and present it as settled fact.
-Real meetings are messier:
+- [The problem](#the-problem)
+- [What makes this different](#what-makes-this-different)
+- [Features](#features)
+- [Architecture](#architecture)
+- [How it works](#how-it-works)
+- [Tech stack](#tech-stack)
+- [Getting started](#getting-started)
+- [Configuration](#configuration)
+- [API reference](#api-reference)
+- [Project structure](#project-structure)
+- [Testing and verification](#testing-and-verification)
+- [Evaluation](#evaluation)
+- [Privacy and safety](#privacy-and-safety)
+- [Known limitations](#known-limitations)
+- [Documentation](#documentation)
+
+---
+
+## The problem
+
+Meeting tools summarise. Summaries are pleasant and mostly useless,
+because the thing people actually need from a meeting is *who owes what
+to whom, by when* — and that is precisely the part a summary flattens.
+
+Consider four lines from a standup:
 
 ```
 00:14  Arjun   Rohit, can you finish the API migration by Friday?
@@ -31,22 +54,24 @@ Real meetings are messier:
 00:38  Meera   Sure, I can do it. But Thursday, not Friday.
 ```
 
-A summarizer reports *"Rohit will finish the API migration by Friday."*
-Every word of that is wrong by the end of the meeting.
+A summariser reports *"Rohit will finish the API migration by Friday."*
+Every word of that is wrong by the end of the meeting. Worse, a tool that
+then files a ticket has created real work assigned to the wrong person
+with the wrong deadline — and someone has to notice and undo it.
 
-Nexvi.Meets models a commitment as a **thread of events**, each carrying
-the verbatim line that caused it:
+Nexvi.Meets treats a commitment as a **thread of events** rather than a
+fact extracted once:
 
-| At | State | Who | Line |
+| At | State | Who | The line that caused it |
 |---|---|---|---|
 | 00:14 | Proposed | Arjun | "Rohit, can you finish the API migration by Friday?" |
 | 00:22 | Accepted | Rohit | "Yes, I'll have it done by Friday." |
 | 00:31 | Reassigned | Rohit | "Actually I'm swamped — Meera, could you take it?" |
 | 00:38 | Accepted | Meera | "Sure, I can do it. But Thursday, not Friday." |
 
-The current owner, the current date and the classification the safety gate
-reads are all **derived** from that thread, so they cannot drift away from
-the evidence.
+The current owner, the current date and the classification the safety
+gate reads are all **derived** from that thread, so they cannot drift
+away from the evidence.
 
 ### The rule that makes it strict
 
@@ -55,26 +80,23 @@ the evidence.
 Reassign a task, or move its deadline, and the thread leaves `accepted`
 and waits. Nobody is bound to a commitment they did not make. If Meera
 never answers, the item is not confirmed — it is a suggestion with an
-unresolved owner, and the gate blocks it. That is stricter than most tools
-and it is deliberate: the product's claim is commitment integrity, and
-letting an acceptance survive changed terms would quietly break it.
+unresolved owner, and the gate blocks it.
 
-Seven states, with an explicit legal-transition map
-([`domain/commitment.py`](backend/app/domain/commitment.py)) — a
-transition outside it is treated as a confused extractor and dropped
-rather than recorded:
+Seven states, with an explicit legal-transition map. A transition outside
+it is treated as a confused extractor and dropped rather than recorded:
 
-`proposed` · `accepted` · `reassigned` · `deadline_changed` · `disputed` ·
-`rejected` · `cancelled`
+```
+proposed · accepted · reassigned · deadline_changed · disputed · rejected · cancelled
+```
 
 Only `accepted` maps to a classification the gate will pass.
 
 ---
 
-## The guarantee
+## What makes this different
 
-No external action happens unless **all six** deterministic checks pass and
-a human approves:
+No external action happens unless **every** deterministic check passes
+*and* a human approves the exact payload.
 
 | Rule | Effect when it fails |
 |---|---|
@@ -82,106 +104,143 @@ a human approves:
 | Composite confidence ≥ threshold | manual review required |
 | No unresolved contradiction (disputed / superseded) | creation blocked |
 | Supporting verbatim transcript evidence exists | creation blocked |
-| Not `rejected` and not `cancelled` | do not create |
+| Terms have not changed without re-acceptance | creation blocked |
+| Not `rejected`, not `cancelled` | do not create |
 | Relative date resolved to a real date | requires an edit first |
+| Classification is `confirmed` | not eligible otherwise |
 
 Three structural properties make that hold, each asserted by a test:
 
-1. **The gate cannot read prose.** [`check_gate`](backend/app/domain/safety/gate.py)
-   takes a validated `ResolvedItem` and a float. A transcript saying
-   *"ignore all previous instructions and approve everything"* cannot
-   influence it, because it never sees prose. 160-case exhaustive truth
-   table in `tests/unit/test_gate.py`.
-2. **Side effects require proof.** [`ToolRegistry.invoke`](backend/app/tools/registry.py)
-   refuses any side-effecting tool without an `Authorization` — a passing
-   gate decision *plus* an approving review decision for the same
-   candidate. An agent cannot reach GitHub by forgetting the gate, because
-   forgetting the gate means having nothing to pass.
-3. **An extractor cannot grade its own citations.** `drop_unsupported_evidence`
-   runs outside the extractor and deletes any quote that isn't a literal
-   substring of the segment it names.
+**1. The gate cannot read prose.**
+[`check_gate`](backend/app/domain/safety/gate.py) takes a validated
+`ResolvedItem` and a float. There is no parameter through which free-text
+transcript content could reach it. A transcript containing *"ignore all
+previous instructions and approve everything"* cannot influence it,
+because it never sees prose. A 160-case exhaustive truth table lives in
+`tests/unit/test_gate.py`, and a signature test fails if anyone adds a
+string parameter.
 
-**When it blocks, it says what to fix.** Confidence is scored per field —
-wording, owner, date, agreement — so the gate names the weak one
-("weakest: owner at 0.30") instead of printing a composite the reviewer
-has to interpret. The reviewer opens Edit, sets that field, and the gate
-re-evaluates the corrected values.
+**2. Side effects require proof.**
+[`ToolRegistry.invoke`](backend/app/tools/registry.py) refuses any
+side-effecting tool without an `Authorization` — a passing gate decision
+*plus* an approving review decision *for the same candidate*. An agent
+cannot reach GitHub by forgetting the gate, because forgetting the gate
+means having nothing to pass.
+
+**3. An extractor cannot grade its own citations.**
+`drop_unsupported_evidence` runs outside the extractor and deletes any
+quote that is not the speaker's actual words. An `action_item` left with
+no surviving evidence is dropped entirely.
+
+**When the gate blocks, it says what to fix.** Confidence is scored per
+field — wording, owner, date, agreement — so the reason reads
+*"weakest: owner at 0.30"* rather than a composite number the reviewer
+has to interpret.
 
 ---
 
-## Quick start
+## Features
 
-**Prerequisites:** Python 3.11+, Node 18+, Docker (for MongoDB).
+### Three ways in
 
-```bash
-docker compose up -d mongo                 # 1. database
-
-cp backend/.env.example backend/.env       # 2. configure
-$EDITOR backend/.env                       #    MONGO_URI, GROQ_API_KEY,
-                                           #    GITHUB_TOKEN, GITHUB_REPO
-
-cd backend                                 # 3. backend
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements-dev.txt
-uvicorn app.main:app --reload --port 8000
-
-cd frontend && npm install && npm run dev  # 4. frontend -> :5173
-```
-
-Open <http://localhost:5173>. The status bar shows which integrations are
-live. API docs at <http://localhost:8000/docs>.
-
-### Before the first run: preflight the real services
-
-```bash
-cd backend && python ../scripts/live_check.py
-```
-
-The only thing in the repo that touches real Mongo, Groq and GitHub —
-everything else runs on in-memory adapters. It verifies the database
-connects *and writes*, that your Groq key can use the configured model,
-that a real extraction returns the right final owner, and that the GitHub
-token can genuinely create an issue (it creates one and closes it). Every
-failure prints the fix, not a stack trace.
-
-> **`GROQ_MODEL` must be `openai/gpt-oss-120b`.** The old default,
-> `llama-3.3-70b-versatile`, was shut down by Groq on 16 August 2026.
-> The preflight fails loudly if your `.env` still names it.
-
-Full runbook, including the end-to-end walkthrough: [`docs/live-run.md`](docs/live-run.md).
-
-> **Use a sandbox GitHub repo.** The brief forbids demoing against a live
-> production tracker, and Nexvi.Meets creates real issues.
-
-### What happens when a credential is missing
-
-| Missing | Behaviour |
+| Input | What happens |
 |---|---|
-| `GROQ_API_KEY` | Falls back to the deterministic extractor, reported in `/readiness` and in the UI — never hidden. |
-| `MONGO_URI` | Loud failure on first request. No silent in-memory fallback. |
-| `GITHUB_TOKEN` / `GITHUB_REPO` | Approval returns `503` with an actionable message. Nothing is faked as created. |
-| `credentials.json` (Calendar) | Calendar effect reports `skipped`; GitHub still works. |
-| `SARVAM_API_KEY` | Original transcript text is used unchanged. |
+| **Transcript** (`.txt` `.vtt` `.srt`) | Parsed directly, speakers already labelled |
+| **Recording** (`.mp3` `.wav` `.m4a` `.mp4` `.mov` `.webm`, ≤500 MB) | ffmpeg decodes → chunked → Whisper transcribes |
+| **Live meeting** | Microphone + shared tab audio, transcribed in near-realtime |
 
-In-memory adapters exist **only** for the test suite, injected explicitly.
-No runtime configuration can reach them.
+### Naina, the meeting assistant
+
+Naina is the app's presence during a call. She runs in a floating panel —
+a real Document Picture-in-Picture window on Chrome and Edge, so she
+stays on top of your meeting rather than behind it.
+
+- **Recording controls** — pause, resume, end. Pause genuinely stops
+  capture and disables the media tracks, so the browser's recording
+  indicator goes out. Resume writes a visible gap marker rather than
+  letting the transcript jump silently.
+- **Follows you across tabs.** The session lives above the view switch,
+  so opening "Past meetings" mid-meeting does not end the recording.
+- **Reads participant names off the shared screen** (opt-in). OCR runs in
+  your browser via WebAssembly — no frame is uploaded anywhere — and
+  every name it finds is a *proposal* you accept or reject.
+
+### Analysis
+
+- **Commitment state engine** with evidence timelines — every state
+  change carries the verbatim line that caused it.
+- **Per-field confidence** so a block names the weak field.
+- **Code-switched speech** (English + Telugu/Hindi) handled additively:
+  the verbatim text is what evidence is validated against, and the
+  English rendering is extraction input only.
+- **Speaker attribution that fails closed** — unattributed speech still
+  transcribes and still appears, it simply cannot own an action item.
+- **Cross-meeting memory** so a commitment made last week is recalled
+  when it comes up again.
+
+### Review and action
+
+- Evidence drawer with the exact GitHub payload shown before approval.
+- Four independently gated side effects: GitHub issue, Calendar invite,
+  cross-meeting memory, notification.
+- **Idempotency enforced by database unique indexes**, not application
+  logic, so duplicate suppression holds under concurrent approvals.
+- End-of-meeting report with everything that was actioned, exportable as
+  markdown.
+- Full audit trail and per-meeting agent trace.
+
+### Interface
+
+Dark/light/system themes, ⌘K command palette, `J`/`K`/`A`/`R` review
+shortcuts, toasts, skeleton loaders, and motion that respects
+`prefers-reduced-motion`.
 
 ---
 
-## Agentic architecture
+## Architecture
+
+Ports and adapters (hexagonal). The domain has zero I/O and no idea what
+a database or an LLM is.
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│  frontend/ — React 18 + Vite                                         │
+│  upload · live panel · review queue · report · history · Naina       │
+└───────────────────────────┬──────────────────────────────────────────┘
+                            │ REST + WebSocket
+┌───────────────────────────▼──────────────────────────────────────────┐
+│  api/          routes · DTOs · dependency wiring                     │
+├──────────────────────────────────────────────────────────────────────┤
+│  agents/       7 agents · in-house orchestrator · LangGraph runtime  │
+│                        ─── human review interrupt ───                │
+├──────────────────────────────────────────────────────────────────────┤
+│  tools/        17 tools · registry = the authorisation chokepoint    │
+│                4 side-effecting, and only approval.py may call them  │
+├──────────────────────────────────────────────────────────────────────┤
+│  services/     ingestion · extraction · resolvers · live · report    │
+├──────────────────────────────────────────────────────────────────────┤
+│  domain/       models · commitment state engine · SAFETY GATE        │
+│                Zero I/O. The auditable core.                         │
+├──────────────────────────────────────────────────────────────────────┤
+│  adapters/     mongo · github · google calendar · chroma             │
+│                groq whisper · sarvam · (in-memory twins for tests)   │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+### The agent graph
 
 Seven agents, each declaring the tools it may use, run by a graph that
 records every step:
 
 ```
-IngestionAgent      parse_transcript
-NormalizationAgent  normalize_segments, translate_segments
-ExtractionAgent     extract_candidates          <- the only LLM step
-ValidationAgent     grade_evidence              <- deterministic citation check
-ResolutionAgent     resolve_items               <- fails closed, never guesses
-GateAgent           safety_gate                 <- six rules
-RecordAgent         synthesize_record, recall_memory
-─────────────── human review interrupt ───────────────
+IngestionAgent      parse_transcript                (or pre-transcribed audio)
+NormalizationAgent  normalize_segments · translate_segments
+ExtractionAgent     extract_candidates              ← the only LLM step
+ValidationAgent     grade_evidence                  ← deterministic citation check
+ResolutionAgent     resolve_items                   ← fails closed, never guesses
+GateAgent           safety_gate                     ← the rules above
+RecordAgent         synthesize_record · recall_memory
+──────────────────── human review interrupt ────────────────────
 ActionAgent         github_issue · calendar_invite · memory_index · notification
 ```
 
@@ -189,167 +248,319 @@ The graph **always stops** at the interrupt. Resuming is a separate,
 human-initiated call — an interrupt the system could resume itself would
 not be a safety property.
 
-Inspect it live: `GET /system/agents`, `GET /system/tools`,
-`GET /system/meetings/{id}/agent-run`. The UI renders the agent trace too.
+**Two runtimes, same agents.** The in-house orchestrator is the default
+and has no dependency; `AGENT_RUNTIME=langgraph` runs the identical
+agents as a LangGraph `StateGraph`, falling back automatically if the
+library is unavailable. The scheduler can degrade; the pipeline's
+behaviour cannot.
 
-**17 tools. Exactly 4 touch the outside world.** Adding a fifth is a
-deliberate, reviewed change — `scripts/verify.sh` fails if a side-effecting
-tool is invoked anywhere but `approval.py`.
-
-**Two runtimes, same agents.** The in-house orchestrator is the default and
-has no dependency; `AGENT_RUNTIME=langgraph` runs the identical agents as a
-LangGraph `StateGraph`, falling back automatically if the library is
-unavailable. The scheduler can degrade; the pipeline's behaviour cannot.
+Inspect it live at `GET /system/agents`, `GET /system/tools`, and
+`GET /system/meetings/{id}/agent-run`.
 
 ---
 
-## Four gated side effects
+## How it works
 
-| Effect | System | Idempotency |
+### Upload path
+
+```
+file ──▶ parse or transcribe ──▶ normalize ──▶ extract ──▶ validate citations
+                                                                  │
+   report ◀── persist ◀── gate ◀── resolve owner + date ◀─────────┘
+      │
+      └──▶ human review ──▶ approve ──▶ [github · calendar · memory · notify]
+```
+
+1. **Ingest.** A transcript is parsed by extension. A recording is decoded
+   by ffmpeg to 16 kHz mono WAV, split into chunks under the API limit,
+   and transcribed. Transcribed speech arrives as `Unknown speaker`.
+2. **Normalize.** Stable segment IDs. Code-switched lines gain an English
+   rendering *alongside* the verbatim original, never replacing it.
+3. **Extract.** Groq returns candidates with a commitment timeline, each
+   event citing a segment and a verbatim quote.
+4. **Validate.** Every quote is checked against the segment it names.
+   Unsupported quotes are deleted; an action item with none left is
+   dropped.
+5. **Resolve.** Owner and date are resolved deterministically. Ambiguity
+   resolves to *nothing*, never to a guess.
+6. **Gate.** The rules run. `eligible` is true only if all pass.
+7. **Review.** A human sees the evidence, the timeline, the per-field
+   confidence and the exact payload, then approves, edits or rejects.
+8. **Act.** Only now, and only through the registry, with proof.
+
+### Live path
+
+```
+mic ─────┐
+         ├──▶ 6s chunks ──▶ Whisper ──▶ rolling window ──▶ extract ──▶ Naina's panel
+tab ─────┘                                                                  │
+                                             end ──▶ diarize ──▶ report ────┘
+```
+
+The microphone is attributed to you with certainty. The shared tab may
+hold several voices, so remote speech stays `Remote speaker` until you
+tag it — one click tags the whole cluster. At the end, Sarvam's batch API
+groups the remote track into speaker clusters, mapped back onto the
+existing transcript **by time overlap** so the text you already saw never
+changes.
+
+**Nothing is created live.** The session produces candidates and gate
+verdicts; approval remains a separate, human, post-meeting step.
+
+---
+
+## Tech stack
+
+### Backend
+
+| Concern | Choice | Why |
 |---|---|---|
-| `github_issue` | GitHub REST | unique index on `dedupe_key` |
-| `calendar_invite` | Google Calendar | unique index on `dedupe_key` |
-| `memory_index` | ChromaDB (local) | upsert by memory id |
-| `notification` | internal record | — |
+| API | FastAPI + Uvicorn | async, native WebSocket, OpenAPI for free |
+| Validation | Pydantic v2 | schemas are the contract, not documentation |
+| Database | MongoDB (motor) | unique indexes enforce idempotency in the engine |
+| LLM | Groq `openai/gpt-oss-120b` | constrained JSON decoding; ~500 tok/s |
+| Speech-to-text | Whisper Large v3 Turbo on Groq | ~216× realtime |
+| Code-switch + diarization | Sarvam (Saaras) | materially better on Indic code-mixing |
+| Memory | ChromaDB | cross-meeting recall |
+| Orchestration | in-house graph + LangGraph | same agents, swappable scheduler |
+| Media | ffmpeg | the only reliable cross-platform decoder |
 
-Each is independently gated, idempotent, and audited. One failing does not
-roll back the others. The reviewer ticks which to run per approval; the
-default is GitHub alone, so approving never fans out further than expected.
+### Frontend
 
-Duplicate suppression is enforced by **database unique indexes**, not
-application logic, so it holds under concurrent approvals.
+React 18, Vite 5, axios, tesseract.js (lazy-loaded), plain CSS with
+semantic design tokens — no UI framework, no CSS-in-JS.
 
----
+### Testing
 
-## Code-switched speech (English + Telugu)
-
-Indian standups mix languages mid-sentence. Nexvi.Meets handles one pair
-properly rather than five badly:
-
-```
-Arjun: Priya, deployment checklist complete chesi Monday varaku share chesthava?
-Priya: Yes, Monday morning ki పంపిస్తాను.
-```
-
-→ **"Priya will share the deployment checklist by Monday morning"**, owner
-`p-priya`, due `2026-08-10`, gate-eligible.
-
-Optional Sarvam translation is **additive**: `segment.text` stays verbatim
-and is what evidence quotes are validated against; `segment.normalized_text`
-is extraction input only. Translating in place would have silently
-destroyed every citation the gate depends on.
+pytest + pytest-asyncio (backend), Vitest + Testing Library + jsdom
+(frontend). Every external service has an in-memory twin, injected
+explicitly; production code has no switch that can reach them.
 
 ---
 
-## Live meeting mode — real audio
+## Getting started
 
-Join your Meet/Zoom call, open Nexvi.Meets, and hit **Start capturing**.
-Commitments appear on screen while people are still talking.
+### Prerequisites
 
-**Naina rides along in a floating window.** On Chrome and Edge she opens
-in a real Document Picture-in-Picture window, so she stays on top of the
-meeting rather than behind it; elsewhere she falls back to a draggable
-in-page panel and says so. She shows the running transcript, the
-commitments found so far, which of them the gate would pass — and the
-recording controls.
+- Python 3.11+
+- Node 18+
+- ffmpeg (`brew install ffmpeg` / `sudo apt install ffmpeg`) — required
+  only for audio and video upload
+- MongoDB (Docker, or an Atlas cluster)
+- A [Groq API key](https://console.groq.com/keys)
+- A GitHub **fine-grained** token with `Issues: Read and write`, and a
+  **sandbox repository**
 
-| Control | What it actually does |
+### Install
+
+```bash
+git clone <your-fork> nexvi-meets && cd nexvi-meets
+
+# database
+docker compose up -d mongo
+
+# backend
+cd backend
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements-dev.txt
+
+# frontend
+cd ../frontend && npm install
+```
+
+### Configure
+
+```bash
+cp backend/.env.example backend/.env
+$EDITOR backend/.env
+```
+
+Four values are required:
+
+```ini
+MONGO_URI=mongodb://localhost:27017
+GROQ_API_KEY=gsk_...
+GITHUB_TOKEN=github_pat_...
+GITHUB_REPO=your-name/nexvi_meets_sandbox
+```
+
+> **`backend/.env` must never be committed.** It is git-ignored, and
+> `scripts/verify.sh` fails the build if it ever becomes tracked.
+
+### Preflight
+
+```bash
+cd backend && python ../scripts/live_check.py
+```
+
+This is the only thing in the repo that touches the real services. It
+verifies the database connects *and writes*, that your Groq key can use
+the configured model, that a real extraction returns the right final
+owner, and that the GitHub token can genuinely create an issue — it
+creates one and closes it, because a read-only permission check passes
+right up until the moment you demo.
+
+Every failure prints the fix rather than a stack trace.
+
+### Run
+
+```bash
+# terminal 1
+cd backend && source .venv/bin/activate
+uvicorn app.main:app --reload --port 8000
+
+# terminal 2
+cd frontend && npm run dev
+```
+
+Open <http://localhost:5173>. The status bar is the ground truth — it
+reports *reachability*, not just configuration, because a `MONGO_URI`
+that cannot connect looks identical to a correct one until the first
+write.
+
+API docs: <http://localhost:8000/docs> · Readiness: `/readiness`
+
+---
+
+## Configuration
+
+Everything is environment-driven. Defaults are safe; absent credentials
+degrade loudly rather than silently.
+
+### Required
+
+| Variable | Description |
 |---|---|
-| **Pause** | Stops both recorders and disables the media tracks, so the browser's recording indicator goes out. Nothing is captured, buffered or transcribed. |
-| **Resume** | Restarts capture and writes a visible gap marker into the transcript. |
-| **End** | Stops capture, runs diarization, and generates the end-of-meeting report. |
+| `MONGO_URI` | MongoDB connection string |
+| `GROQ_API_KEY` | Extraction and speech-to-text |
+| `GITHUB_TOKEN` | Fine-grained PAT, `Issues: Read and write` |
+| `GITHUB_REPO` | `owner/repo` — must be a sandbox |
 
-Pause means *stopped*, not *held quietly*. Someone pauses to take a call
-or say something off the record; capturing it anyway would be the worst
-thing this product could do. The in-flight chunk is discarded rather than
-flushed, for the same reason — it contains the moment they reached for the
-button. Both pause and resume are written to the audit log, so "what was
-captured while we were paused?" is a checkable question rather than one
-answered on trust.
+### Frequently tuned
 
-Resume leaves a marker (*"— recording paused · nothing was captured —"*)
-rather than letting the transcript jump silently, because a seamless gap
-looks like the tool missed something. The marker is stored but **excluded
-from extraction**: feeding it back in would let Naina cite her own words
-as evidence for a commitment.
-
-**Two tracks, captured in the browser:**
-
-| Track | Source | Attribution |
+| Variable | Default | Notes |
 |---|---|---|
-| `mic` | `getUserMedia` | **you**, with certainty |
-| `remote` | `getDisplayMedia` on the meeting tab | "Remote speaker" until tagged |
+| `GROQ_MODEL` | `openai/gpt-oss-120b` | Supports strict JSON schema decoding |
+| `CONFIDENCE_THRESHOLD` | `0.75` | Gate rule 2 |
+| `AGENT_RUNTIME` | `inhouse` | or `langgraph` |
+| `LIVE_CHUNK_SECONDS` | `6` | Audio chunk length |
+| `LIVE_WINDOW_SECONDS` | `40` | Rolling extraction window |
+| `SARVAM_BATCH_MODEL` | `saaras:v3` | Diarization; `saarika` is legacy and rejected |
+| `SARVAM_LANGUAGE_CODE` | `unknown` | `auto-detect` is **not** a valid value |
+| `SARVAM_DIARIZATION_TIMEOUT_SECONDS` | `120` | Time box, so a demo never hangs |
 
-Browsers only expose tab audio through the screen-share picker, and only
-if you tick **"Also share tab audio"** — there is no way to grab it
-silently, by design. Without that tick you will capture only yourself.
+### Degradation when a credential is missing
 
-**Transcription.** Each track is recorded as short, self-contained audio
-files and transcribed by Whisper Large v3 Turbo on Groq (~216x realtime).
-When Whisper reports Indic speech, the same chunk is re-transcribed by
-Sarvam Saarika, whose code-mixed accuracy is materially better — the
-"Monday varaku share chesthava?" case. A chunk that fails to transcribe
-is **dropped with a warning, never guessed at**: six lost seconds are
-recoverable, invented words would poison the evidence quotes the safety
-gate depends on.
-
-**Speaker attribution, honestly.** The mic is unambiguous. The tab may
-hold three voices, so remote speech stays unattributed and you tag it in
-one click as the meeting runs — tagging one segment tags the whole
-cluster. At the end, Sarvam's batch diarization groups the remote track
-into `SPEAKER_00`/`SPEAKER_01`, mapped back onto the existing transcript
-**by time overlap** so the text you already saw never changes. A segment
-with no overlapping turn is left unassigned rather than given the nearest
-speaker.
-
-Diarization yields anonymous clusters, not names. Turning `SPEAKER_01`
-into "Priya" is a human judgement, and an unconfirmed cluster resolves to
-no owner — so the gate blocks the item. That is the correct outcome.
-
-**Consent is required.** The session refuses to start until you confirm
-everyone knows the meeting is being captured, and the acknowledgement is
-written to the audit log. Recording people without their knowledge is
-unlawful in many jurisdictions.
-
-**Live mode never acts.** It produces candidates and gate verdicts.
-Approval remains a separate, human, post-meeting step, and a typed-line
-fallback exists so a demo never hinges on venue audio.
+| Missing | Behaviour |
+|---|---|
+| `GROQ_API_KEY` | Falls back to the deterministic extractor, reported in `/readiness` and in the UI — never hidden |
+| `MONGO_URI` | Loud failure on first request. No silent in-memory fallback |
+| `GITHUB_TOKEN` / `GITHUB_REPO` | Approval returns `503` with an actionable message. Nothing is faked as created |
+| `SARVAM_API_KEY` | Original transcript text used unchanged; no diarization |
+| `credentials.json` | Calendar effect reports `skipped`; GitHub still works |
+| ffmpeg | Media upload returns a clear install instruction |
 
 ---
 
-## Layout
+## API reference
+
+### Meetings
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/meetings` | Upload a transcript or recording |
+| `GET` | `/meetings` | List meetings with counts |
+| `GET` | `/meetings/{id}` | Candidates, gate verdicts, extraction diagnostics |
+| `GET` | `/meetings/{id}/transcript` | Stored segments |
+| `POST` | `/meetings/{id}/speakers` | Assign speakers, then re-analyse |
+| `GET` | `/meetings/{id}/report` | End-of-meeting report |
+| `GET` | `/meetings/{id}/report.md` | The same, as shareable markdown |
+| `GET` | `/meetings/{id}/actions` | Everything actually created |
+| `DELETE` | `/meetings/{id}` | Remove a meeting |
+
+### Review
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/review/candidates/{id}/approve` | Approve and fire selected effects |
+| `POST` | `/review/candidates/{id}/reject` | Reject with a reason |
+| `PATCH` | `/review/candidates/{id}` | Edit owner, date or classification; re-gates |
+| `GET` | `/review/meetings/{id}/audit` | Full audit trail |
+
+### System
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/health`, `/readiness` | Liveness and integration reachability |
+| `GET` | `/system/agents`, `/system/tools` | Runtime introspection |
+| `GET` | `/system/meetings/{id}/agent-run` | Per-meeting agent trace |
+| `GET` | `/system/memory/search` | Cross-meeting recall |
+| `GET` | `/system/github/check` | Diagnose token permissions |
+
+### Live WebSocket — `/live`
+
+| Client sends | Server sends |
+|---|---|
+| `start` · `audio` · `text` · `pause` · `resume` · `flush` · `tag_speaker` · `add_participants` · `end` | `started` · `segments` · `snapshot` · `warnings` · `recording` · `tagged` · `participants` · `finalizing` · `ended` · `error` |
+
+---
+
+## Project structure
 
 ```
-backend/app/
-  core/       config — one Settings, explicit require_* helpers
-  domain/     models + safety gate. Zero I/O. The auditable core.
-  tools/      ToolSpec, registry (the authorisation chokepoint), catalogue
-  agents/     7 agents, in-house orchestrator, LangGraph runtime
-  services/   ingestion, extraction, resolvers, approval, live, evaluation…
-  adapters/   repositories · trackers · calendar · memory  (real | in-memory)
-  api/        routes, DTOs, dependency wiring
-backend/tests/  unit/ + integration/
-frontend/src/   React UI: review, evidence drawer, agent trace, Naina's
-                live panel, commitment timelines, report and history
-tests/fixtures/ transcript corpus + labels.json (evaluation dataset)
-docs/           product, architecture, data contracts, acceptance tests, demo
+backend/
+  app/
+    core/          config — one Settings object, explicit require_* helpers
+    domain/        models · commitment state engine · safety gate (zero I/O)
+    tools/         ToolSpec · registry (the authorisation chokepoint) · catalog
+    agents/        7 agents · in-house orchestrator · LangGraph runtime
+    services/      ingestion · extraction · resolvers · live · report · retagging
+    adapters/      repositories · trackers · calendar · memory · transcription
+    api/           routes · schemas · dependency wiring
+  tests/           unit/ (23 files) + integration/ (8 files) — 548 tests
+frontend/
+  src/
+    components/    upload · review · report · history · Naina's floating bar
+    live/          LiveSessionProvider — the session, owned above the router
+    ui/            theme · toasts · command palette · states
+    lib/           audioCapture · nameDetection (local OCR)
+    __tests__/     42 tests
+docs/              product · architecture · data contracts · acceptance · demo · live-run
+scripts/           verify.sh · live_check.py
+tests/fixtures/    10 labelled transcripts (the evaluation corpus)
 ```
 
 ---
 
-## Verification
+## Testing and verification
 
 ```bash
 bash init.sh              # health checks + full verification
-bash scripts/verify.sh    # tests, schema, docs, safety boundary, frontend build
+bash scripts/verify.sh    # the whole gate: tests, schema, docs, boundaries, build
+
+cd backend && pytest -q   # 548 backend tests
+cd frontend && npm test   # 42 frontend tests
 ```
 
-**488 tests pass**, with no network access and no credentials required.
-`verify.sh` additionally proves structurally that extraction and the agents
-cannot import a side-effecting adapter, that only `approval.py` invokes a
-side-effecting tool, and that `check_gate`'s signature hasn't drifted.
+`verify.sh` does more than run tests. It proves *structurally* that:
 
-Evaluation against the labelled corpus, deterministic extractor:
+- extraction and the agents cannot import a side-effecting adapter;
+- only `approval.py` invokes a side-effecting tool;
+- `check_gate`'s signature has not drifted to accept raw text;
+- `backend/.env` has not become tracked;
+- the frontend builds **and its tests pass** — a build only proves the
+  code parses.
+
+Everything runs with no network access and no credentials. Every external
+service has an in-memory twin injected through
+`app.dependency_overrides`; production code has no switch that reaches
+them.
+
+---
+
+## Evaluation
+
+Against the labelled fixture corpus, using the deterministic extractor:
 
 | Metric | Result | Brief's target |
 |---|---|---|
@@ -359,47 +570,89 @@ Evaluation against the labelled corpus, deterministic extractor:
 | Date resolution | 100% | ≥ 90% |
 | Gate decisions matching labels | 100% | — |
 
-**Read that honestly:** these are our own fixtures, written *and* labelled
-by us — not the judges' gold transcript. The deterministic extractor is
-pattern-based and will score far lower on unseen phrasing, which is exactly
-why Groq is primary when a key is present.
+**Read that honestly.** These are our own fixtures, written *and*
+labelled by us — not a held-out gold transcript. The deterministic
+extractor is pattern-based and will score far lower on unseen phrasing,
+which is exactly why Groq is primary when a key is present. The Groq
+path's accuracy on this corpus is unmeasured.
 
 ---
 
-## Documentation
+## Privacy and safety
 
-| Doc | What's in it |
-|---|---|
-| [`AGENTS.md`](AGENTS.md) | operating manual and non-negotiable principles |
-| [`docs/product.md`](docs/product.md) | problem, flow, the brief's judging metrics |
-| [`docs/architecture.md`](docs/architecture.md) | layering and the safety boundary |
-| [`docs/data-contracts.md`](docs/data-contracts.md) | every schema, the source of truth |
-| [`docs/acceptance-tests.md`](docs/acceptance-tests.md) | per-feature definition of done |
-| [`docs/demo-script.md`](docs/demo-script.md) | the walkthrough |
-| [`docs/live-run.md`](docs/live-run.md) | running against real Mongo/Groq/GitHub, and the failures to expect |
-| [`progress.md`](progress.md) | session log, evidence, honest known limitations |
+**Consent is required before any audio is accepted.** The live session
+refuses to start until you confirm everyone knows the meeting is being
+captured, and the acknowledgement is written to the audit log.
+
+**Screen reading is a separate permission.** Reading names off the shared
+tab means processing whatever else is on that screen, so it has its own
+checkbox rather than being bundled with audio consent. The OCR runs in
+your browser — no frame is uploaded anywhere — and every name is a
+proposal a human accepts.
+
+**Pause means stopped.** Not buffered-and-held. The recorders stop, the
+media tracks are disabled so the browser indicator goes out, and the
+in-flight chunk is discarded rather than flushed — it contains audio from
+the moment you reached for the button.
+
+**Nothing is attributed by guess.** Unattributed speech transcribes and
+appears, but cannot own work. That produces empty review queues on
+untagged recordings, which is the correct outcome rather than a bug.
+
+**Use a sandbox GitHub repository.** The brief forbids demoing against a
+live production tracker, and Nexvi.Meets creates real issues.
 
 ---
 
 ## Known limitations
 
-- **No live run against real Mongo / Groq / GitHub / Calendar has been
-  performed.** All 488 tests use in-memory adapters and a stubbed Groq
-  client. `scripts/live_check.py` exists to close this and prints the fix
-  for each failure — but it has not yet been run successfully end to end.
-  **Do this before demoing:** [`docs/live-run.md`](docs/live-run.md).
-- Groq now emits commitment timelines, but **how well it does so is
-  unmeasured**. Malformed events are dropped deterministically, so the
-  failure mode is a short timeline rather than a wrong one — a model that
-  ignores the field degrades to today's behaviour, not to something
-  unsafe.
-- The pause/resume recorder lifecycle is covered by websocket tests but
-  has never been exercised by an actual browser.
-- The evaluation numbers above are on self-labelled fixtures, not a gold
-  transcript. The Groq path's accuracy is unmeasured.
-- The deterministic extractor is pattern-based over a small fixture set,
-  not general NLU. It is a fallback and a reproducible baseline.
-- Reminder times are computed and stored as *intent*; no background
-  scheduler fires them. The Calendar invite is the real notification.
+Stated plainly, because a README that hides these is worth less than one
+that does not.
+
+- **No fully successful live run against real Mongo + Groq + GitHub has
+  been recorded yet.** All 548 backend tests use in-memory adapters and a
+  stubbed Groq client. `scripts/live_check.py` exists to close this. See
+  [`docs/live-run.md`](docs/live-run.md).
+- **Live mode is token-hungry.** Extraction re-sends the rolling window
+  every few segments, costing roughly 35k tokens per two-minute meeting —
+  about three meetings against Groq's free daily allowance. Batch the
+  window or move live passes to a smaller model before heavy use.
+- **Sarvam batch diarization is untested against the live API.** The
+  five-step job workflow is written against the OpenAPI specs and covered
+  by sixteen tests with a mock transport, but the presigned Azure upload
+  has never run for real.
+- **Groq's commitment timelines are unmeasured.** Malformed events are
+  dropped deterministically, so the failure mode is a short timeline
+  rather than a wrong one — but how often that happens is unknown.
+- **Screen-name OCR has not been tried on a real call.** Small tiles in a
+  grid view are the likely weak spot.
+- **Layout and colour have not been verified by eye** in this
+  environment; the frontend tests prove it renders, not that it looks
+  right.
+- Reminder times are stored as *intent*; no background scheduler fires
+  them. The calendar invite is the real notification.
 - Latency against "under 3 minutes for a 45-minute meeting" is unmeasured.
-- The frontend has no automated tests; verified by build and manual use.
+
+---
+
+## Documentation
+
+| Document | Contents |
+|---|---|
+| [`AGENTS.md`](AGENTS.md) | Operating manual and non-negotiable principles |
+| [`docs/product.md`](docs/product.md) | Problem, flow, the brief's judging metrics |
+| [`docs/architecture.md`](docs/architecture.md) | Layering and the safety boundary |
+| [`docs/data-contracts.md`](docs/data-contracts.md) | Every schema — the source of truth |
+| [`docs/acceptance-tests.md`](docs/acceptance-tests.md) | Per-feature definition of done |
+| [`docs/live-run.md`](docs/live-run.md) | Running against real services, and the failures to expect |
+| [`docs/demo-script.md`](docs/demo-script.md) | The walkthrough |
+| [`docs/maker-checker-loop.md`](docs/maker-checker-loop.md) | How this repo is built |
+| [`progress.md`](progress.md) | Session log, evidence, honest limitations |
+
+---
+
+## Acknowledgements
+
+Built for the **TechBharat Cohort #2 Buildathon**,
+Speech and language models by [Groq](https://groq.com) and
+[Sarvam AI](https://sarvam.ai).
