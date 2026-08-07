@@ -4,7 +4,7 @@
 works out what people actually committed to, and — only after a human
 approves the exact payload — creates the follow-up work.
 
-Built for the TechBharat Cohort #2 Buildathon, Use Case B (*Agentic AI
+Built for the TechBharat Cohort #2 Buildathon,(*Agentic AI
 Meeting Assistant*).
 
 > The LLM may interpret the meeting.
