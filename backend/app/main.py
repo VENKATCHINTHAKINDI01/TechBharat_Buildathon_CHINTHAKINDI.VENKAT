@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import logging
+import os
+import sys
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,9 +13,20 @@ from app.adapters.trackers.base import IssueTrackerError
 from app.api.routes import health, live, meetings, review, system
 from app.core.config import MissingCredentialError, get_settings
 
+# Ensure logs directory exists
+os.makedirs("logs", exist_ok=True)
+
+# Configure detailed logging for better tracking
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+        logging.FileHandler("logs/app.log"),
+    ],
+)
+
 logger = logging.getLogger("nexvi_meets")
-
-
 def create_app() -> FastAPI:
     settings = get_settings()
     application = FastAPI(
@@ -64,6 +77,21 @@ def create_app() -> FastAPI:
         return JSONResponse(
             status_code=503,
             content={"detail": {"message": "Integration is not configured.", "error": str(exc)}},
+        )
+
+    @application.exception_handler(Exception)
+    async def _global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+        """Catch-all for unhandled exceptions, ensuring they are logged with
+        a full traceback and return a standard 500 error."""
+        logger.exception("Unhandled exception during request to %s %s", request.method, request.url.path)
+        return JSONResponse(
+            status_code=500,
+            content={
+                "detail": {
+                    "message": "An unexpected error occurred on the server.",
+                    "error": str(exc),
+                }
+            },
         )
 
     @application.on_event("startup")
